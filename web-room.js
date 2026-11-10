@@ -106,4 +106,42 @@
     if(cp)cp.onclick=function(){try{navigator.clipboard.writeText(url);cp.textContent='Zkopírováno';setTimeout(function(){cp.textContent='Zkopírovat odkaz';},1500);}catch(e){}};
   }
   setInterval(updateBanner,400);
+
+  // ---- zadání kódu na mobilu (jen dokud zařízení není ovladač) ----
+  if(isHost){
+    var ov=null;
+    function promptJoin(){
+      if(!ov){
+        ov=document.createElement('div');
+        ov.style.cssText='position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;'
+          +'background:rgba(3,6,11,.92);padding:24px;'
+          +"font-family:'Chakra Petch','Barlow Condensed',sans-serif;color:#eef3f7";
+        ov.innerHTML='<div style="width:100%;max-width:360px;text-align:center;background:linear-gradient(180deg,rgba(16,26,40,.96),rgba(6,10,17,.98));border:1px solid rgba(63,216,255,.4);border-radius:4px;padding:22px 20px">'
+          +'<div style="font-size:13px;letter-spacing:.16em;color:#3fd8ff">MOBIL JAKO VOLANT</div>'
+          +'<h2 style="margin:8px 0 4px;font-style:italic;font-size:26px">Zadej kód z obrazovky</h2>'
+          +'<p style="margin:0 0 14px;color:#93a6b8;font-size:15px">Na počítači zvol hru s mobilem jako volantem. Nahoře se ukáže čtyřmístný kód.</p>'
+          +'<input id="tkCode" inputmode="latin" autocapitalize="characters" autocomplete="off" maxlength="5" placeholder="např. AB12" '
+          +'style="width:100%;box-sizing:border-box;text-align:center;text-transform:uppercase;letter-spacing:.3em;font:inherit;font-size:30px;font-weight:700;'
+          +'padding:12px;border-radius:4px;border:1px solid #3a5541;background:#0b121c;color:#eef3f7;outline:none">'
+          +'<div style="display:flex;gap:10px;margin-top:14px">'
+          +'<button id="tkJoin" style="flex:1;font:inherit;font-weight:700;font-style:italic;font-size:20px;cursor:pointer;border:0;border-radius:3px;padding:12px;background:linear-gradient(180deg,#78e8ff,#1fb3e2);color:#04121a">PŘIPOJIT</button>'
+          +'<button id="tkCancel" style="font:inherit;font-size:15px;cursor:pointer;border:0;border-radius:3px;padding:12px 16px;background:rgba(255,255,255,.08);color:#eef3f7">Zpět</button>'
+          +'</div><p id="tkErr" style="margin:10px 0 0;color:#ff7a6c;font-size:14px;min-height:18px"></p></div>';
+        document.body.appendChild(ov);
+        var inp=ov.querySelector('#tkCode'),err=ov.querySelector('#tkErr');
+        function go(){var v=(inp.value||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,5);
+          if(v.length<3){err.textContent='Zadej celý kód z obrazovky.';return;}
+          location.href=location.origin+location.pathname+'?p='+v;}
+        ov.querySelector('#tkJoin').onclick=go;
+        inp.addEventListener('keydown',function(e){if(e.key==='Enter')go();});
+        ov.querySelector('#tkCancel').onclick=function(){ov.style.display='none';};
+      }
+      ov.style.display='flex';var i=ov.querySelector('#tkCode');if(i){i.value='';setTimeout(function(){i.focus();},50);}
+    }
+    // tlačítko „TENTO TELEFON JE OVLADAČ“ na webu otevře zadání kódu místo původního spojení
+    document.addEventListener('click',function(e){
+      var t=e.target&&e.target.closest&&e.target.closest('[data-screen="ctrl"]');
+      if(t){e.preventDefault();e.stopImmediatePropagation();promptJoin();}
+    },true);
+  }
 })();
