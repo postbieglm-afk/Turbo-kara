@@ -2,7 +2,7 @@
 'use strict';
 /* ---------- závodníci a stav ---------- */
 function mkRacer(i,name,color,dk,ai){
-  const L0=T.loopL||L,lat=(i?.42:-.42)*HALF,p=trackAt(L0-90,lat);
+  const L0=T.spawnS!=null?T.spawnS+90:(T.loopL||L),lat=(i?.42:-.42)*HALF,p=trackAt(L0-90,lat);
   return {i,name,color,dk,ai,x:p.x,y:p.y,ang:p.a,vx:0,vy:0,vf:0,steerS:0,idx:p.i,s:L0-90,vmax:0,prog:-90,lapsDone:0,laps:[],best:null,lapStart:0,
     finished:false,place:0,finishT:0,coins:0,coinsTot:0,item:IT_NONE,roll:IT_NONE,rollT:0,boostT:0,shieldT:0,spinT:0,spinDir:1,hitN:0,
     stuck:0,rev:0,crashN:0,oilN:0,offT:0,shk:0,z:0,vz:0,landN:0,hL:0,spinMax:1,spinFrom:0,shieldHit:0,drift:0,driftT:0,driftL:0,dlN:0,mtN:0,hD:0,hM:0,slickT:0,pudCd:0,splat:null,splatT:0,hH:0,hC:0,hO:0,brakeP:0,revHold:0,wrongT:0,off:false,water:false,want:false,banner:null,brake:false,dist:0,lat:0,maxMul:1,aiHold:0,dustT:0,
@@ -16,15 +16,16 @@ function newGame(kind){
   if(free&&!two){r[1].ghost=true;r[1].x=r[1].y=1e7;}
   PK.forEach(p=>{p.on=true;p.t=0;});CONES.forEach(k=>{k.on=true;k.t=0;k.ft=9;});
   return {kind,two,demo,free,fs:{t:0},tip:free?{t:6,title:'VOLNÁ JÍZDA',txt:'Jezdi, kam chceš, a zkoušej. '+(touchMode&&kind!=='freepad1'?'Pauzou se vrátíš do menu.':'R vrátí auto na silnici, Esc je pauza.')}:{t:0},seen:{},
-    remote:kind==='pad'||kind==='pad1'||kind==='freepad1',solo:kind==='pad1'||kind==='freepad1',mode:demo?'race':'count',count:free?1.9:3.6,lastBeep:4,t:0,r,oils:[],parts:[],finishN:0,endT:-1,paused:false,
+    remote:kind==='pad'||kind==='pad1'||kind==='freepad1',solo:kind==='pad1'||kind==='freepad1',mode:demo||free?'race':'count',count:free?0:3.6,goT:free?1.2:0,lastBeep:4,t:0,r,oils:[],parts:[],finishN:0,endT:-1,paused:false,
     humans:two?[0,1]:demo?[0]:[0],diffSpd:DIFFS[diff].spd};
 }
 G=newGame('demo');
 
 function startGame(mode){
   ensureTrack(mode.startsWith('free'));
-  audio();lastMode=mode;appScr='game';G=newGame(mode);ov.hidden=true;
+  audio();musicStop();lastMode=mode;appScr='game';G=newGame(mode);ov.hidden=true;
   document.body.classList.toggle('split',G.two);engineStart();
+  if(G.free)sfx('go');
 }
 function fmt(t){if(t==null)return '–';const m=Math.floor(t/60),s=t-m*60;return m+':'+s.toFixed(1).padStart(4,'0');}
 function pauseGame(){
@@ -41,7 +42,7 @@ function togglePause(){if(G.paused)resumeGame();else pauseGame();}
 
 /* ---------- ovládání: klávesnice ---------- */
 const keys={};
-const GAME_KEYS=new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyW','KeyA','KeyS','KeyD','KeyF','Enter','NumpadEnter','ShiftLeft','ShiftRight','KeyL']);
+const GAME_KEYS=new Set(['KeyH','KeyQ','Numpad0','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyW','KeyA','KeyS','KeyD','KeyF','Enter','NumpadEnter','ShiftLeft','ShiftRight','KeyL']);
 addEventListener('keydown',e=>{
   if(appScr==='ctrl')return;
   if(e.code==='Escape'||e.code==='KeyP'){if(appScr==='game'){togglePause();e.preventDefault();}return;}
@@ -57,6 +58,10 @@ addEventListener('keydown',e=>{
   }
 });
 addEventListener('keyup',e=>{keys[e.code]=false;});
+// troubení: H (sám), Q a pravý Shift (dva hráči), na dotyku podržení prstu kdekoli mimo tlačítka
+function hornWant(){const out=[0,0];if(appScr!=='game'||G.paused||G.mode==='over')return out;
+  if(G.two){out[G.humans[0]]=keys.KeyQ||touchState[0].h?1:0;out[G.humans[1]]=keys.ShiftRight||keys.Numpad0||touchState[1].h?1:0;}
+  else out[G.humans[0]]=keys.KeyH||touchState[0].h?1:0;return out;}
 addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseGame();});
 
@@ -94,6 +99,7 @@ cv.addEventListener('pointerdown',e=>{
   if(!touchActive())return;
   const z=zoneAt(e.clientX,e.clientY);if(!z)return;
   try{cv.setPointerCapture(e.pointerId);}catch(x){}
+  if(z.k===null){ptrs.set(e.pointerId,{vi:z.vi,k:'H',fixed:true});e.preventDefault();return;}
   ptrs.set(e.pointerId,{vi:z.vi,k:z.k,fixed:z.k==='I'||z.k==='B'||z.k==='V'});
   if(z.k==='I'&&G.mode==='race'){const r=G.r[G.humans[z.vi]];if(r)r.want=true;}
   if(z.k==='V')toggleView(G.humans[z.vi]);
@@ -106,9 +112,9 @@ cv.addEventListener('pointermove',e=>{
 const ptrEnd=e=>{ptrs.delete(e.pointerId);};
 cv.addEventListener('pointerup',ptrEnd);cv.addEventListener('pointercancel',ptrEnd);
 function readTouch(){
-  touchState.forEach(t=>{t.l=t.r=t.b=0;});
+  touchState.forEach(t=>{t.l=t.r=t.b=t.h=0;});
   if(!touchActive()){ptrs.clear();return;}
-  for(const p of ptrs.values()){const t=touchState[p.vi];if(!t)continue;if(p.k==='L')t.l=1;if(p.k==='R')t.r=1;if(p.k==='B')t.b=1;}
+  for(const p of ptrs.values()){const t=touchState[p.vi];if(!t)continue;if(p.k==='L')t.l=1;if(p.k==='R')t.r=1;if(p.k==='B')t.b=1;if(p.k==='H')t.h=1;}
 }
 
 /* ---------- řízení: člověk a AI ---------- */
@@ -194,6 +200,7 @@ function spinOut(r,dur=1.05,coins=true){
 function step(r,c){
   const dt=DT,spin=r.spinT>0,air=r.z>0;
   r.steerS+=clamp(c.steer-r.steerS,-dt*7,dt*7);
+  r.thr=c.gas?1:0;
   // drift jako v Mario Kartu: poskok, smyk do zatáčky, jiskry se nabíjejí, pustíš = mini-turbo
   if(r.drift){if(!c.drift||spin||r.vf<80||Math.hypot(r.vx,r.vy)<110)endDrift(r,!spin&&r.vf>=80);}
   else if(c.drift&&!air&&!spin&&r.vf>150&&Math.abs(c.steer)>.3){r.drift=Math.sign(c.steer);r.driftT=0;r.driftL=0;r.vz=75;r.z=.5;if(!r.ai)sfx('hop');}

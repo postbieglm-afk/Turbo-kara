@@ -161,9 +161,41 @@ function drawHUD(V,r,P,t,vi){
     drawButton(z.I,'',false,r.item?r.color:'rgba(12,22,15,.55)',true);
     if(r.item)drawItemIcon(r.item,z.I.x+z.I.w/2,z.I.y+z.I.h/2,z.I.w*.26);else txt('PŘEDMĚT',z.I.x+z.I.w/2,z.I.y+z.I.h/2,`700 ${Math.round(z.u*.18)}px ${UIF}`,C.muted,'center','middle',false);}
 }
+// menu: auto přijede smykem na pódium, chvíli se točí, pak s turbem odjede (cyklus 14 s)
+const GCYC=14,G_ARR=2.6,G_LEAVE=11.2,G_GONE=13.2;
+function garSmoke(gar){if(gar.smoke)return gar.smoke;const cv0=document.createElement('canvas');cv0.width=cv0.height=64;const g0=cv0.getContext('2d'),gr=g0.createRadialGradient(32,32,2,32,32,31);
+  gr.addColorStop(0,'rgba(255,255,255,.9)');gr.addColorStop(.5,'rgba(255,255,255,.35)');gr.addColorStop(1,'rgba(255,255,255,0)');g0.fillStyle=gr;g0.fillRect(0,0,64,64);
+  const map=new THREE.CanvasTexture(cv0),pool=[];for(let i=0;i<56;i++){const s=new THREE.Sprite(new THREE.SpriteMaterial({map,color:0xc4ccd6,transparent:true,opacity:0,depthWrite:false}));s.visible=false;gar.S.add(s);pool.push({s,life:0,max:1,vx:0,vz:0});}
+  return gar.smoke={pool,k:0};}
+function garPuff(gar,x,z,vx,vz){const sm=garSmoke(gar),p=sm.pool[sm.k++%sm.pool.length];p.life=p.max=1.1+Math.random()*.6;p.vx=vx;p.vz=vz;p.s.position.set(x,4,z);p.s.visible=true;}
 function renderGarage(t){const gar=R3.gar,ren=R3.renderer,c=gar.car;ctx.clearRect(0,0,W,H);
-  c.g.rotation.y=t*.32;const asp=W/Math.max(1,H),wide=asp>1.15,cam=gar.cam;cam.aspect=asp;cam.fov=wide?30:46;
-  const d=wide?175:240;cam.position.set(Math.cos(.85)*d,wide?42:60,Math.sin(.85)*d);cam.lookAt(wide?-40:0,wide?10:-26,wide?20:0);cam.updateProjectionMatrix();
+  const asp=W/Math.max(1,H),wide=asp>1.15,cam=gar.cam;cam.aspect=asp;cam.fov=wide?30:46;
+  const d=wide?175:240,cx=Math.cos(.85)*d,cz=Math.sin(.85)*d,lk=wide?[-40,10,20]:[0,-26,0];cam.position.set(cx,wide?42:60,cz);cam.lookAt(lk[0],lk[1],lk[2]);cam.updateProjectionMatrix();
+  const dt=Math.min(.05,Math.max(0,t-(gar.lt||t)));if(!gar.lt||t-gar.lt>.5)gar.t0=t;gar.lt=t;
+  // osy kamery na zemi: doprava a do hloubky; dráha se počítá v nich, ať je vidět na každé obrazovce
+  const fx=lk[0]-cx,fz=lk[2]-cz,fl=Math.hypot(fx,fz),F=[fx/fl,fz/fl],Rv=[-F[1],F[0]],sc=d/175;
+  const Wp=(r,dd)=>[cx+(Rv[0]*r+F[0]*dd)*sc,cz+(Rv[1]*r+F[1]*dd)*sc];
+  const P=[Wp(330,360),Wp(150,370),Wp(10,200),[0,0]];
+  const bez=u=>{const a=1-u;return [0,1].map(k=>a*a*a*P[0][k]+3*a*a*u*P[1][k]+3*a*u*u*P[2][k]+u*u*u*P[3][k]);};
+  const bezD=u=>{const a=1-u;return [0,1].map(k=>3*a*a*(P[1][k]-P[0][k])+6*a*u*(P[2][k]-P[1][k])+3*u*u*(P[3][k]-P[2][k]));};
+  const hd=u=>{const v=bezD(Math.min(.995,u));return Math.atan2(v[1],v[0]);},wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
+  const dir=Math.sign(wrap(hd(.9)-hd(.1)))||1,SLIP=1.2,yArr=hd(.995)+dir*SLIP;
+  const ex=Wp(420,230),yExit=Math.atan2(ex[1],ex[0]);let dl=((yExit-yArr)%(2*Math.PI)+2*Math.PI)%(2*Math.PI);if(dl<1.6)dl+=2*Math.PI;
+  const T=(t-gar.t0)%GCYC;let x=0,z=0,yaw=yArr,spd=0,steer=0,smoke=0,boost=false,vis=true;
+  if(T<G_ARR){const s=T/G_ARR,u=1-Math.pow(1-s,2.2),p=bez(u),v=bezD(u),du=2.2*Math.pow(1-s,1.2)/G_ARR;x=p[0];z=p[1];spd=Math.hypot(v[0],v[1])*du;
+    const q=clamp((s-.12)/.55,0,1),sl=SLIP*q*q*(3-2*q);yaw=hd(u)+dir*sl;steer=-dir*.45*clamp((s-.1)/.3,0,1)*(1-clamp((s-.85)/.15,0,1));smoke=s>.15&&s<.97?1:0;}
+  else if(T<G_LEAVE){const q=(T-G_ARR)/(G_LEAVE-G_ARR),e=q-Math.sin(2*Math.PI*q)/(2*Math.PI);yaw=yArr+dl*e;}
+  else if(T<G_GONE){const s=(T-G_LEAVE)/(G_GONE-G_LEAVE),l=Math.max(0,(s-.35)/.65),dist=700*sc*l*l;x=Math.cos(yExit)*dist;z=Math.sin(yExit)*dist;yaw=yExit+(s<.35?Math.sin(T*40)*.02:0);
+    spd=s<.35?900:1400*sc*l/(G_GONE-G_LEAVE)/.65;boost=s>.3;smoke=s<.5?2:0;}
+  else vis=false;
+  c.g.visible=vis;c.g.position.set(x,Math.hypot(x,z)<54?2:0,z);c.g.rotation.y=-yaw;
+  c.wheels.forEach((w,i)=>{w.rotation.z-=spd*dt/5;if(i<2)w.rotation.y=steer;});
+  c.flame.visible=boost;if(boost)c.flame.scale.set(.8+Math.random()*.7,1,1);
+  // kouř od zadních kol
+  if(vis&&smoke&&dt>0){const co=Math.cos(yaw),si=Math.sin(yaw);for(const side of [-1,1])if(Math.random()<(smoke>1?.9:.75)){const lx=-13,lz=side*11.5;
+    garPuff(gar,x+co*lx-si*lz,z+si*lx+co*lz,(Math.random()-.5)*20-co*30,(Math.random()-.5)*20-si*30);}}
+  if(gar.smoke)for(const p of gar.smoke.pool){if(p.life<=0){p.s.visible=false;continue;}p.life-=dt;const k=1-p.life/p.max;
+    p.s.position.x+=p.vx*dt;p.s.position.z+=p.vz*dt;p.s.position.y+=9*dt;p.vx*=.97;p.vz*=.97;const sz=10+38*k;p.s.scale.set(sz,sz,1);p.s.material.opacity=.42*(1-k)*Math.min(1,k*6);}
   ren.setScissorTest(false);ren.setViewport(0,0,W,H);ren.render(gar.S,cam);}
 function render(t){
   if(R3&&R3.gar&&(appScr==='menu'||appScr==='lobby')&&!ov.hidden){try{renderGarage(t);return;}catch(e){}}

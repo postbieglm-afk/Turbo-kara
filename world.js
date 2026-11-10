@@ -90,6 +90,59 @@ function endDrift(r,give){
   r.drift=0;r.driftT=0;r.driftL=0;
 }
 /* ---------- volná jízda: síť ulic = závodní okruh + mřížka uliček kolem i skrz ---------- */
+/* ---------- volná jízda v Tokiu podle Martinova náčrtku: ovál a v něm pravoúhlá síť ulic ---------- */
+// souřadnice v pixelech obrázku; S = jednotky hry na pixel, střed obrázku je počátek
+const FREE_TK={S:12,cx:557,cy:272.5,
+  oval:{y0:148,y1:397,xl:320,xr:780,rl:83,rr:98},
+  streets:[[[237,272.5],[878,272.5]],[[360,148],[360,397]],[[472,148],[472,397]],[[578,148],[578,272.5]],[[745,148],[745,397]],
+    [[657,272.5],[657,397]],[[522,272.5],[522,397]],[[360,208],[472,208]],[[657,333],[745,333]]],
+  plazas:[[365,152,468,208],[476,275,520,392],[660,275,742,333]],
+  spawn:[578,272.5],
+  pads:[[355,148],[412,272.5],[754,148],[343,397],[741,397]],
+  jumps:[[524,148],[505,272.5],[693,272.5],[543,397]],
+  coins:[[465,148],[849,199],[745,208],[307,272.5],[636,272.5],[360,324],[472,327],[256,341],[659,397]],
+  boxes:[[264,189],[360,184],[578,204],[653,148],[850,343],[475,397]]};
+const ftw=(p)=>[(p[0]-FREE_TK.cx)*FREE_TK.S,(p[1]-FREE_TK.cy)*FREE_TK.S];
+// polyline oválu a ulic, vzorkovaná po DSn
+function freeLayoutPolys(DSn){const F=FREE_TK,o=F.oval,pts=[],step=DSn/F.S,my=(o.y0+o.y1)/2,ry=(o.y1-o.y0)/2;
+  const seg=(a,b)=>{const n=Math.max(1,Math.round(Math.hypot(b[0]-a[0],b[1]-a[1])/step));for(let k=0;k<n;k++)pts.push(ftw([a[0]+(b[0]-a[0])*k/n,a[1]+(b[1]-a[1])*k/n]));};
+  const arc=(cx,rx,a0,a1)=>{const len=Math.PI*(rx+ry)/2,n=Math.max(8,Math.round(len/step));for(let k=0;k<n;k++){const a=a0+(a1-a0)*k/n;pts.push(ftw([cx+Math.cos(a)*rx,my+Math.sin(a)*ry]));}};
+  seg([o.xl,o.y0],[o.xr,o.y0]);arc(o.xr,o.rr,-Math.PI/2,Math.PI/2);seg([o.xr,o.y1],[o.xl,o.y1]);arc(o.xl,o.rl,Math.PI/2,Math.PI*1.5);
+  const polys=[{pts,closed:true}];
+  for(const [a,b] of F.streets){const q=[],n=Math.max(2,Math.round(Math.hypot(b[0]-a[0],b[1]-a[1])/step));for(let k=0;k<=n;k++)q.push(ftw([a[0]+(b[0]-a[0])*k/n,a[1]+(b[1]-a[1])*k/n]));polys.push({pts:q,closed:false});}
+  return polys;}
+// předměty z náčrtku; náměstí bez domů
+function freeLayoutItems(){const F=FREE_TK,at=p=>{const [x,y]=ftw(p),[,i]=gridNear(x,y);return {i,x:T.x[i],y:T.y[i],a:Math.atan2(T.ty[i],T.tx[i])};};
+  for(const p of F.pads){const q=at(p);PADS.push({x:q.x,y:q.y,a:q.a});}
+  for(const p of F.jumps){const q=at(p);JUMPS.push({x:q.x,y:q.y,a:q.a,i:q.i,hl:28,hw:50});}
+  for(const p of F.coins){const q=at(p),c=Math.cos(q.a),s=Math.sin(q.a);for(let k=0;k<5;k++){const u=(k-2)*38;PK.push({type:'coin',x:q.x+c*u,y:q.y+s*u,on:true,t:0,ph:k*.6});}}
+  for(const p of F.boxes){const q=at(p),c=Math.cos(q.a),s=Math.sin(q.a);[-.56,0,.56].forEach((o,k)=>PK.push({type:'box',x:q.x-s*o*HALF,y:q.y+c*o*HALF,on:true,t:0,ph:k*2.1}));}
+  for(const r of F.plazas){const [x0,y0]=ftw([r[0],r[1]]),[x1,y1]=ftw([r[2],r[3]]),cx=(x0+x1)/2,cy=(y0+y1)/2,hx=(x1-x0)/2,hy=(y1-y0)/2,m=70;
+    const inR=(x,y,mm)=>Math.abs(x-cx)<hx+mm&&Math.abs(y-cy)<hy+mm;
+    CITY.blds=CITY.blds.filter(b=>!inR(b.x,b.y,Math.max(b.w||0,b.d||0)*.5+m));CITY.signs=CITY.signs.filter(o=>!inR(o.x,o.y,m));CITY.shops=CITY.shops.filter(o=>!inR(o.x,o.y,m));
+    const rr=Math.min(hx,hy)*.55;for(let k=0;k<8;k++){const a=k/8*TAU;PK.push({type:'coin',x:cx+Math.cos(a)*rr,y:cy+Math.sin(a)*rr,on:true,t:0,ph:k*.5});}
+    const wide=hx>=hy;[-1,0,1].forEach((o,k)=>PK.push({type:'box',x:cx+(wide?o*48:0),y:cy+(wide?0:o*48),on:true,t:0,ph:k*2.1}));}
+  const [sx,sy]=ftw(F.spawn),[,si]=gridNear(sx,sy);T.spawnS=si*DS;placeGarage();}
+// kuřecí garáž (easter egg) v bloku pod pravým náměstím, vrata do ulice vpravo
+let GARAGE=null;
+function placeGarage(){const g={x:1968,y:1110,w:320,d:230,t:16,open:0,openT:0,hint:0,egg:{x:1938,y:1110,on:true,t:0}};GARAGE=g;
+  const inR=(x,y,m)=>x>g.x-g.w/2-m&&x<2260+m&&Math.abs(y-g.y)<g.d/2+m;
+  CITY.blds=CITY.blds.filter(b=>!inR(b.x,b.y,Math.max(b.w||0,b.d||0)*.5+30));CITY.signs=CITY.signs.filter(o=>!inR(o.x,o.y,30));CITY.shops=CITY.shops.filter(o=>!inR(o.x,o.y,30));
+  CITY.lamps=CITY.lamps.filter(o=>!inR(o.x,o.y,10));
+  const W=(x,y,w,d)=>({x,y,a:0,w,d,h:70,rad:Math.hypot(w,d)/2});
+  const door=W(g.x+g.w/2-4,g.y,g.t,g.d-g.t);door.door=true;CITY.gwalls=[W(g.x,g.y-g.d/2,g.w,g.t),W(g.x,g.y+g.d/2,g.w,g.t),W(g.x-g.w/2,g.y,g.t,g.d),door];}
+// garáž je zavřená; zatroubíš před vraty a otevře se, uvnitř leží zlaté vejce, které tě promění v kuře (a znovu zpátky)
+function garageCheck(g){if(!GARAGE||!T.free)return;const q=GARAGE,dx0=q.x+q.w/2,dt=DT,hw=typeof hornWant==='function'?hornWant():[];let inside=false;
+  for(const hi of g.humans){const r=g.r[hi],dd=Math.hypot(r.x-dx0,r.y-q.y),inG=Math.abs(r.y-q.y)<q.d/2&&r.x>q.x-q.w/2&&r.x<dx0;if(inG)inside=true;
+    if(dd<420&&r.x>dx0-10&&hw[hi]){if(q.openT<=0){sfx('door');g.tip={t:4,title:'GARÁŽ SE OTEVÍRÁ',txt:'Uvnitř něco svítí…'};}q.openT=15;}
+    else if(dd<380&&r.x>dx0&&q.open<.1&&q.hint<=0){q.hint=20;g.tip={t:5,title:'ZAVŘENÁ GARÁŽ',txt:touchMode&&!g.remote?'Zkus zatroubit: podrž prst na obrazovce.':'Zkus zatroubit: '+(g.two?'Q nebo pravý Shift':'klávesa H')+'.'};}
+    const e=q.egg;if(e.on&&Math.hypot(r.x-e.x,r.y-e.y)<34&&r.z<20){e.on=false;e.t=5;r.chicken=!r.chicken;sfx('cluck');r.shk=Math.max(r.shk,.5);
+      for(let i=0;i<24;i++){const a=Math.random()*TAU,v=60+Math.random()*150;addPart(r.x,r.y,Math.cos(a)*v,Math.sin(a)*v,.6+Math.random()*.5,i%3?'#fbfaf4':'#f2c14e',3,'spark');}
+      g.tip=r.chicken?{t:5,title:'ZLATÉ VEJCE',txt:'Jsi kuře! Až se vejce znovu objeví, vezmi ho a budeš zase auto.'}:{t:4,title:'ZPÁTKY V AUTĚ',txt:'Kuře zůstalo v garáži.'};}}
+  if(!q.egg.on){q.egg.t-=dt;if(q.egg.t<=0)q.egg.on=true;}
+  if(q.hint>0)q.hint-=dt;if(inside)q.openT=Math.max(q.openT,3);if(q.openT>0)q.openT-=dt;
+  const tgt=q.openT>0?1:0,was=q.open;q.open=clamp(q.open+(tgt?1:-1)*dt*.9,0,1);if(was>0&&q.open===0&&!tgt)sfx('doorclose');}
+
 function genNet(trk){
   const loop=genTrack(trk.cp()),DSn=loop.DS,M=420,SP=660;
   const bx0=loop.minX-M,bx1=loop.maxX+M,by0=loop.minY-M,by1=loop.maxY+M;
@@ -100,7 +153,8 @@ function genNet(trk){
   const loopNear=(x,y)=>{let b=1e18,bi=-1;const cx=Math.floor(x/LC),cy=Math.floor(y/LC);
     for(let a=-2;a<=2;a++)for(let c=-2;c<=2;c++){const arr=LG.get((cx+a)+','+(cy+c));if(arr)for(const i of arr){const dx=x-loop.x[i],dy=y-loop.y[i],d=dx*dx+dy*dy;if(d<b){b=d;bi=i;}}}
     return [bi<0?999:Math.sqrt(b),bi];};
-  const polys=[{pts:[],closed:true}];for(let i=0;i<loop.N;i++)polys[0].pts.push([loop.x[i],loop.y[i]]);
+  const LAY=trk.id==='tokyo';
+  const polys=LAY?freeLayoutPolys(DSn):[{pts:[],closed:true}];if(!LAY)for(let i=0;i<loop.N;i++)polys[0].pts.push([loop.x[i],loop.y[i]]);
   // přímá ulička; vynechá úseky souběžné s okruhem (aby se silnice nepřekrývaly) a dominanty
   const addLine=(x0,y0,x1,y1)=>{const len=Math.hypot(x1-x0,y1-y0),n=Math.floor(len/DSn),ux=(x1-x0)/len,uy=(y1-y0)/len;let run=[];
     const flush=()=>{if(run.length>=18)polys.push({pts:run,closed:false});run=[];};
@@ -109,8 +163,8 @@ function genNet(trk){
       if(ok)run.push([x,y]);else flush();}
     flush();};
   const nxc=Math.max(2,Math.round((bx1-bx0)/SP)),nyc=Math.max(2,Math.round((by1-by0)/SP));
-  for(let k=0;k<=nxc;k++){const x=bx0+(bx1-bx0)*k/nxc;addLine(x,by0,x,by1);}
-  for(let k=0;k<=nyc;k++){const y=by0+(by1-by0)*k/nyc;addLine(bx0,y,bx1,y);}
+  if(!LAY){for(let k=0;k<=nxc;k++){const x=bx0+(bx1-bx0)*k/nxc;addLine(x,by0,x,by1);}
+  for(let k=0;k<=nyc;k++){const y=by0+(by1-by0)*k/nyc;addLine(bx0,y,bx1,y);}}
   const blocks=[];for(let a=0;a<nxc;a++)for(let b=0;b<nyc;b++){const xa=bx0+(bx1-bx0)*a/nxc,xb=bx0+(bx1-bx0)*(a+1)/nxc,ya=by0+(by1-by0)*b/nyc,yb=by0+(by1-by0)*(b+1)/nyc,cx=(xa+xb)/2,cy=(ya+yb)/2;
     blocks.push({cx,cy,hx:(xb-xa)/2-WALL,hy:(yb-ya)/2-WALL,loopD:loopNear(cx,cy)[0]});}
   // spojit do polí jako u okruhu
@@ -142,7 +196,7 @@ function genNet(trk){
       if(jn[i]){pen=false;continue;}if(!pen){P2.moveTo(ex,ey);pen=true;}else P2.lineTo(ex,ey);}}});
   let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;for(let i=0;i<NN;i++){minX=Math.min(minX,x[i]);maxX=Math.max(maxX,x[i]);minY=Math.min(minY,y[i]);maxY=Math.max(maxY,y[i]);}
   return {N:NN,DS:DSn,L:NN*DSn,x,y,tx,ty,k,k3,rl,vt,nx:nxf,ny:nyf,center,edgeL,edgeR,curbs:new Path2D(),minX,minY,maxX,maxY,
-    free:true,blocks,pid,nxt,jn,sw,grid,GC,polys:polys.map(p=>({o:p.o,n:p.n,closed:p.closed})),loopN:loop.N,loopL:loop.N*DSn};
+    free:true,blocks,pid,nxt,jn,sw,grid,GC,polys:polys.map(p=>({o:p.o,n:p.n,closed:p.closed})),loopN:polys[0].n,loopL:polys[0].n*DSn};
 }
 // nejbližší bod sítě přes mřížku (jen volná jízda); [vzdálenost, index]
 function gridNear(px,py){const g=T.grid,GC=T.GC;let b=1e18,bi=-1;const cx=Math.floor(px/GC),cy=Math.floor(py/GC);
@@ -212,11 +266,11 @@ function freeZones(){
 function freeZonesPost(){const r=T.shieldRun;if(!r)return;
   for(const f of r.pud){const p=trackAt((r.i0+Math.round(r.len*f))*DS,0);PUDDLES.push({x:p.x,y:p.y,a:p.a,r:27,i:p.i,lat:0,blobs:[{u:-12,v:6,r:12},{u:14,v:-5,r:10},{u:4,v:10,r:9}]});}}
 // mřížka domů pro srážky
-function buildBGrid(){BGRID=new Map();const C2=220;CITY.blds.forEach(b=>{const r=b.rad+16,x0=Math.floor((b.x-r)/C2),x1=Math.floor((b.x+r)/C2),y0=Math.floor((b.y-r)/C2),y1=Math.floor((b.y+r)/C2);
+function buildBGrid(){BGRID=new Map();const C2=220;CITY.blds.concat(CITY.gwalls||[]).forEach(b=>{const r=b.rad+16,x0=Math.floor((b.x-r)/C2),x1=Math.floor((b.x+r)/C2),y0=Math.floor((b.y-r)/C2),y1=Math.floor((b.y+r)/C2);
   for(let a=x0;a<=x1;a++)for(let c=y0;c<=y1;c++){const k=a+','+c;let arr=BGRID.get(k);if(!arr)BGRID.set(k,arr=[]);arr.push(b);}});}
 // srážka s domy (kruh auta proti otočenému obdélníku domu)
 function hitBuildings(r){const arr=BGRID&&BGRID.get(Math.floor(r.x/220)+','+Math.floor(r.y/220));if(!arr)return;
-  for(const b of arr){const dx=r.x-b.x,dy=r.y-b.y,c=Math.cos(b.a),s=Math.sin(b.a),u=dx*c+dy*s,v=-dx*s+dy*c,hl=b.w/2,hw=b.d/2;
+  for(const b of arr){if(b.door&&GARAGE&&GARAGE.open>.75)continue;const dx=r.x-b.x,dy=r.y-b.y,c=Math.cos(b.a),s=Math.sin(b.a),u=dx*c+dy*s,v=-dx*s+dy*c,hl=b.w/2,hw=b.d/2;
     const ex=u-clamp(u,-hl,hl),ey=v-clamp(v,-hw,hw);let d=Math.hypot(ex,ey),nu,nv;if(d>=14)continue;
     if(d>.01){nu=ex/d;nv=ey/d;}else{const pu=hl-Math.abs(u),pv=hw-Math.abs(v);if(pu<pv){nu=Math.sign(u)||1;nv=0;d=-pu;}else{nu=0;nv=Math.sign(v)||1;d=-pv;}}
     const nx=nu*c-nv*s,ny=nu*s+nv*c;r.x+=nx*(14-d);r.y+=ny*(14-d);const vn=r.vx*nx+r.vy*ny;if(vn>=0)continue;
@@ -226,12 +280,12 @@ function hitBuildings(r){const arr=BGRID&&BGRID.get(Math.floor(r.x/220)+','+Math
   // okraj světa: daleko za městem jemně zpět
   const m=900;if(r.x<T.minX-m||r.x>T.maxX+m||r.y<T.minY-m||r.y>T.maxY+m){const cx=clamp(r.x,T.minX-m,T.maxX+m),cy=clamp(r.y,T.minY-m,T.maxY+m);r.vx+=(cx-r.x)*4*DT;r.vy+=(cy-r.y)*4*DT;r.vx*=.97;r.vy*=.97;}}
 let MINIS=[];
-function ensureTrack(free){if(!!(T&&T.free)===!!free)return;loadTrack(TRK.id,free);
+function ensureTrack(free){const id=free?'tokyo':TRK.id;if(!!(T&&T.free)===!!free&&TRK.id===id)return;loadTrack(id,free);
   if(R3){try{disposeScene(R3);R3=build3D(R3);if(R3){R3.qT.redraw();R3.banT.redraw();}}catch(e){R3=null;}}}
 function respawn(r){const i=nearIdx(r.x,r.y),a=Math.atan2(T.ty[i],T.tx[i]);r.x=T.x[i];r.y=T.y[i];r.ang=a;r.vx=r.vy=r.vf=0;r.z=r.vz=0;r.spinT=0;r.drift=0;r.offT=0;r.cam.a=a;r.idx=i;}
 // trenér: krátké rady, když se jezdec poprvé potká s mechanikou
 function coach(key,title,txt){const g=G;if(g.seen[key]||g.tip.t>1.2)return;g.seen[key]=1;g.tip={t:5.5,title,txt};}
-function freeCoach(dt){const g=G;g.fs.t+=dt;if(g.tip.t>0)g.tip.t-=dt;if(g.mode!=='race')return;const tch=touchMode&&!g.remote;
+function freeCoach(dt){const g=G;g.fs.t+=dt;if(g.tip.t>0)g.tip.t-=dt;if(g.mode!=='race')return;garageCheck(g);const tch=touchMode&&!g.remote;
   for(const hi of g.humans){const r=g.r[hi];r.vmax=Math.max(r.vmax||0,Math.abs(r.vf)*.45);r.inZ=r.inZ||{};
     for(const z of ZONES){const d=Math.hypot(r.x-z.x,r.y-z.y);if(d<z.r&&!r.inZ[z.id]){r.inZ[z.id]=1;g.tip={t:5,title:z.name,txt:z.txt};g.seen['z'+z.id]=1;}else if(d>z.r*1.3)r.inZ[z.id]=0;}
     const ahead=(arr,d)=>arr.some(o=>{const dx=o.x-r.x,dy=o.y-r.y;return dx*dx+dy*dy<d*d&&dx*Math.cos(r.ang)+dy*Math.sin(r.ang)>0;});
@@ -248,8 +302,8 @@ function loadTrack(id,free){
   TRK=TRACKS[id]||TRACKS.tokyo;TERR=TRK.id==='brno'?buildTerrain():null;
   T=free?genNet(TRK):genTrack(TRK.cp());N=T.N;DS=T.DS;L=T.L;
   PK.length=PADS.length=JUMPS.length=CONES.length=BARRS.length=ZEBRA.length=AVOID.length=0;
-  ZONES.length=0;BGRID=null;
-  CITY=TRK.city();if(free&&TRK.id!=='brno')freeZones();else if(free)freeItems();else TRK.items();genLife();
+  ZONES.length=0;BGRID=null;GARAGE=null;
+  CITY=TRK.city();if(free&&TRK.id==='tokyo')freeLayoutItems();else if(free&&TRK.id!=='brno')freeZones();else if(free)freeItems();else TRK.items();genLife();
   if(free&&TRK.id!=='brno'){freeZonesPost();buildBGrid();}
   groundCanvas=TRK.ground();groundPat=ctx.createPattern(groundCanvas,'repeat');
   MINI=[];for(let i=0;i<(T.loopN||N);i+=4)MINI.push([T.x[i],T.y[i]]);

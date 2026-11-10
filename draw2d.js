@@ -31,6 +31,13 @@ function drawCar(r,t){
   const zs=1+r.z/70;
   ctx.save();ctx.translate(r.x+4+r.z*.45,r.y+6+r.z*.45);ctx.rotate(r.ang);ctx.fillStyle='rgba(10,25,10,.32)';rrect(-21,-12,42,24,8);ctx.fill();ctx.restore();
   ctx.save();ctx.translate(r.x,r.y);ctx.rotate(r.ang+(r.drift?r.drift*.34:0));ctx.scale(zs,zs);
+  if(r.chicken){const st=Math.sin(t*(6+Math.min(1,Math.abs(r.vf)/260)*16))*5*Math.min(1,Math.abs(r.vf)/260);
+    ctx.fillStyle='#f5b324';ctx.fillRect(-2+st,-8,6,3);ctx.fillRect(-2-st,5,6,3);
+    ctx.fillStyle='#fbfaf4';ctx.beginPath();ctx.ellipse(-2,0,17,12,0,0,TAU);ctx.fill();ctx.beginPath();ctx.ellipse(-19,0,6,8,0,0,TAU);ctx.fill();
+    ctx.fillStyle='#e9e6da';ctx.beginPath();ctx.ellipse(-3,-11,10,4,0,0,TAU);ctx.ellipse(-3,11,10,4,0,0,TAU);ctx.fill();
+    ctx.fillStyle='#fbfaf4';ctx.beginPath();ctx.arc(14,0,8,0,TAU);ctx.fill();ctx.fillStyle='#e2302a';ctx.beginPath();ctx.ellipse(13,0,6,2.4,0,0,TAU);ctx.fill();
+    ctx.fillStyle='#f5b324';ctx.beginPath();ctx.moveTo(21,-2.5);ctx.lineTo(27,0);ctx.lineTo(21,2.5);ctx.fill();ctx.fillStyle='#111';ctx.fillRect(16,-4.5,2,2);ctx.fillRect(16,2.5,2,2);
+    ctx.restore();return;}
   if(r.boostT>0){const fl=16+Math.random()*12;ctx.fillStyle='#f07a24';ctx.beginPath();ctx.moveTo(-21,-6);ctx.lineTo(-21-fl,0);ctx.lineTo(-21,6);ctx.fill();
     ctx.fillStyle='#ffe08a';ctx.beginPath();ctx.moveTo(-21,-3);ctx.lineTo(-21-fl*.55,0);ctx.lineTo(-21,3);ctx.fill();}
   ctx.fillStyle='#17191b';[[-16,-13],[-16,8],[8,-13],[8,8]].forEach(([x,y])=>{rrect(x,y,10,5,1.5);ctx.fill();});
@@ -124,6 +131,12 @@ function drawWorld(V,r,t){
   // částice, auta, jiskry
   for(const p of G.parts){if(p.k!=='dust'||!vis(p.x,p.y))continue;ctx.globalAlpha=Math.max(0,p.l/p.m);ctx.fillStyle=p.c;ctx.beginPath();ctx.arc(p.x,p.y,p.s*(1.6-p.l/p.m),0,TAU);ctx.fill();}
   ctx.globalAlpha=1;
+  if(GARAGE&&T.free&&vis(GARAGE.x,GARAGE.y,260)){const q=GARAGE;ctx.fillStyle='#2a2e33';ctx.fillRect(q.x-q.w/2,q.y-q.d/2,q.w,q.d);
+    ctx.fillStyle='#9aa3ad';for(const wl of CITY.gwalls)ctx.fillRect(wl.x-wl.w/2,wl.y-wl.d/2,wl.w,wl.d);
+    for(let k=0;k<10;k++){ctx.fillStyle=k%2?'#1a1d21':'#f2c14e';ctx.fillRect(q.x+q.w/2-8,q.y-q.d/2+k*q.d/10,8,q.d/10);}
+    if(q.egg.on){const bob=1+Math.sin(t*3)*.06;ctx.fillStyle='rgba(255,211,110,.25)';ctx.beginPath();ctx.arc(q.egg.x,q.egg.y,30*bob,0,TAU);ctx.fill();ctx.fillStyle='#f2c14e';ctx.beginPath();ctx.ellipse(q.egg.x,q.egg.y,10*bob,13*bob,0,0,TAU);ctx.fill();ctx.fillStyle='rgba(255,255,255,.7)';ctx.beginPath();ctx.ellipse(q.egg.x-3,q.egg.y-4,2.5,4,0,0,TAU);ctx.fill();}
+    if(q.open<1){const th=8+18*(1-q.open);ctx.fillStyle='#b8bfc7';ctx.fillRect(q.x+q.w/2-th,q.y-q.d/2+8,th,q.d-16);ctx.fillStyle='#8a929b';for(let k=1;k<6;k++)ctx.fillRect(q.x+q.w/2-th,q.y-q.d/2+8+k*(q.d-16)/6,th,2);}
+    ctx.save();ctx.translate(q.x-20,q.y);ctx.rotate(Math.PI/2);ctx.fillStyle='rgba(255,208,230,.85)';ctx.font=`italic 700 34px ${HUDF}`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('GARÁŽ',0,0);ctx.restore();}
   [...G.r].sort((a,b)=>a===r?1:b===r?-1:0).forEach(c=>{if(vis(c.x,c.y,40))drawCar(c,t);});
   for(const p of G.parts){if(p.k!=='spark'||!vis(p.x,p.y))continue;ctx.globalAlpha=Math.max(0,p.l/p.m);ctx.fillStyle=p.c;ctx.fillRect(p.x-p.s/2,p.y-p.s/2,p.s,p.s);}
   ctx.globalAlpha=1;

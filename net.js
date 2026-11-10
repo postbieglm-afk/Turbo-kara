@@ -63,9 +63,9 @@ function padBroadcast(now){
     it:G.r.map(r=>r.rollT>0?-1:r.item),co:G.r.map(r=>r.coins),hit:G.r.map(r=>r.hitN),fin:G.r.map(r=>r.finished?1:0),off:G.r.map(r=>r.off&&Math.abs(r.vf)>40&&G.mode==='race'?1:0),cr:G.r.map(r=>r.crashN),oil:G.r.map(r=>r.oilN),ld:G.r.map(r=>r.landN),dl:G.r.map(r=>r.dlN),mt:G.r.map(r=>r.mtN),dr:G.r.map(r=>r.drift?r.driftL+1:0)}).catch(()=>{});
 }
 function showLobby(){
-  appScr='lobby';audio();G=newGame('demo');
+  appScr='lobby';audio();musicStart();G=newGame('demo');
   const solo=soloKind(padKind);
-  const dch=Object.keys(DIFFS).map(k=>`<button class="chip${k===diff?' on':''}" data-diff="${k}">${DIFFS[k].n.toUpperCase()}</button>`).join('');
+  const dch=Object.keys(DIFFS).map(k=>`<button class="chip emo${k===diff?' on':''}" data-diff="${k}" title="${DIFFS[k].n}" aria-label="Obtížnost: ${DIFFS[k].n}">${DIFF_EMO[k]}</button>`).join('');
   card.className='card';ov.classList.remove('menuov');
   card.innerHTML=`<h1>${padKind==='freepad1'?'Volná jízda':solo?'Solo':'Multiplayer'} <span>${TRK.name}</span></h1>
     <p>${solo?'Na mobilu otevři tenhle odkaz a ťukni na OVLADAČ.':'Na obou mobilech otevřete tenhle odkaz, ťukněte na OVLADAČ a vyberte hráče.'} Kamarádovi hru nejdřív nasdílej přes menu Sdílet na jeho e-mail.</p>
@@ -92,7 +92,7 @@ function refreshNet(){if(appScr==='lobby')renderLobby();if(appScr==='ctrl')ctrlP
 /* ---------- ovladač na mobilu ---------- */
 const byId=id=>document.getElementById(id);
 function showCtrl(){
-  appScr='ctrl';audio();engineStop();ov.hidden=true;document.body.classList.add('ctrlmode');ctrlEl.hidden=false;
+  appScr='ctrl';audio();musicStop();engineStop();ov.hidden=true;document.body.classList.add('ctrlmode');ctrlEl.hidden=false;
   byId('cPick').hidden=CT.p>=0;byId('cPad').hidden=CT.p<0;byId('cBack').hidden=CT.p>=0;
   ctrlPeers(room&&room.peers?room.peers():[]);
   roomReady.then(()=>ctrlPeers(room&&room.peers?room.peers():[]));

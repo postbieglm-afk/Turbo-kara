@@ -231,10 +231,11 @@ function build3D(reuse){
   // panorama na obzoru: mrakodrapy a červenobílá věž
   if(TRK.id!=='brno'){const R=rng(31),skyC=['#9aa7b4','#8796a5','#aab6c2','#b7c0c9'];
     const sk=new THREE.InstancedMesh(bG,new THREE.MeshLambertMaterial({map:facade(20,44)}),90);
-    for(let i=0;i<90;i++){const a=i/90*TAU+R()*.05,d=3300+R()*900,w=120+R()*200;ps.set(cx0+Math.cos(a)*d,0,cz0+Math.sin(a)*d);qt.setFromAxisAngle(up,R()*TAU);
+    const hx3=Math.max(3300,(T.maxX-T.minX)/2+1500),hz3=Math.max(3300,(T.maxY-T.minY)/2+1500);
+    for(let i=0;i<90;i++){const a=i/90*TAU+R()*.05,dd=R()*900,w=120+R()*200;ps.set(cx0+Math.cos(a)*(hx3+dd),0,cz0+Math.sin(a)*(hz3+dd));qt.setFromAxisAngle(up,R()*TAU);
       sc.set(w,300+R()*700,w*(.7+R()*.5));m4.compose(ps,qt,sc);sk.setMatrixAt(i,m4);sk.setColorAt(i,cc.set(skyC[Math.floor(R()*4)]));}S.add(sk);
     const towT=tex(16,128,(g,w,h)=>{for(let i=0;i<8;i++){g.fillStyle=i%2?'#f4f1e6':'#e0482c';g.fillRect(0,i*16,w,16);}});
-    const tow=new THREE.Group();tow.position.set(cx0-2900,0,cz0-2300);
+    const tow=new THREE.Group();tow.position.set(cx0-Math.max(2900,(T.maxX-T.minX)/2+1100),0,cz0-Math.max(2300,(T.maxY-T.minY)/2+1100));
     const t1=new THREE.Mesh(new THREE.CylinderGeometry(18,130,560,4,1,true),new THREE.MeshLambertMaterial({map:towT,side:DS2}));t1.position.y=280;tow.add(t1);
     const deck=new THREE.Mesh(new THREE.BoxGeometry(110,24,110),new THREE.MeshLambertMaterial({color:0xf4f1e6}));deck.position.y=300;tow.add(deck);
     const t2=new THREE.Mesh(new THREE.CylinderGeometry(3,18,240,4,1,true),new THREE.MeshLambertMaterial({map:towT,side:DS2}));t2.position.y=680;tow.add(t2);S.add(tow);
@@ -400,7 +401,19 @@ function build3D(reuse){
     [-7,7].forEach(z=>{const sp=new THREE.Sprite(tailM);sp.position.set(-23.5,9.5,z);sp.scale.set(11,11,1);g.add(sp);});
     const pg=new THREE.PlaneGeometry(1,1);pg.rotateX(-Math.PI/2);const beam=new THREE.Mesh(pg,new THREE.MeshBasicMaterial({map:glowT,color:0xfff0c8,transparent:true,opacity:.42*ENV.glow,blending:ADD,depthWrite:false}));
     beam.position.set(78,.3,0);beam.scale.set(120,1,70);g.add(beam);
-    return {g,bodyM,dkM,wheels,brake,flame,shield,tailM,col:''};};
+    // kuře z kuřecí garáže
+    const parts=g.children.filter(o=>o!==flame&&o!==shield&&o!==shadow),ck=new THREE.Group();ck.visible=false;g.add(ck);
+    const featM=new THREE.MeshLambertMaterial({color:0xfbfaf4}),redM=new THREE.MeshLambertMaterial({color:0xe2302a}),yelM=new THREE.MeshLambertMaterial({color:0xf5b324}),blkM=new THREE.MeshBasicMaterial({color:0x111111});
+    const sph=(r,m,x,y,z,sx,sy,sz,par)=>{const s=new THREE.Mesh(new THREE.SphereGeometry(r,14,10),m);s.position.set(x,y,z);s.scale.set(sx||1,sy||1,sz||1);(par||ck).add(s);return s;};
+    sph(11,featM,0,19,0,1.5,1.05,1.1);sph(6,featM,-15,25,0,1,1.3,.9);
+    const head=new THREE.Group();head.position.set(14,31,0);ck.add(head);sph(7.5,featM,0,0,0,1,1,1,head);
+    [[-1,0],[1.6,-.4],[4,0]].forEach(([dx,dz],k)=>sph(2.6,redM,dx-1,7.5+(k===1?1:0),0,1,1,.6,head));
+    const bk=new THREE.Mesh(new THREE.ConeGeometry(2.6,7,8),yelM);bk.rotation.z=-Math.PI/2;bk.position.set(9.5,-.5,0);head.add(bk);
+    sph(2,redM,6.5,-5,0,.8,1.4,.7,head);[-3.6,3.6].forEach(z=>sph(1.2,blkM,4.8,2,z,1,1,1,head));
+    const wings=[-1,1].map(sd=>{const w=new THREE.Group();w.position.set(-1,22,sd*13);ck.add(w);sph(8,featM,-2,-2,0,1.3,.8,.35,w);return w;});
+    const legs=[-1,1].map(sd=>{const l=new THREE.Group();l.position.set(2,10,sd*5);ck.add(l);const c=new THREE.Mesh(new THREE.CylinderGeometry(1,1,10,6),yelM);c.position.y=-5;l.add(c);
+      const f=new THREE.Mesh(new THREE.BoxGeometry(7,1.2,4),yelM);f.position.set(2,-10,0);l.add(f);return l;});
+    return {g,bodyM,dkM,wheels,brake,flame,shield,tailM,col:'',parts,ck,head,wings,legs};};
   const cars=[0,1].map(()=>{const c=mkCar();S.add(c.g);return c;});
   // kamery a kokpity
   const cams=[0,1].map(()=>{const cam=new THREE.PerspectiveCamera(70,1,1,6800);S.add(cam);
@@ -417,13 +430,37 @@ function build3D(reuse){
     const markM=new THREE.MeshBasicMaterial({color:0xffffff});const mark=new THREE.Mesh(new THREE.BoxGeometry(.6,.6,.45),markM);mark.position.y=2.2;wheel.add(mark);
     ck.add(wheel);
     const dc=document.createElement('canvas');dc.width=200;dc.height=140;const dg=dc.getContext('2d'),dispT=new THREE.CanvasTexture(dc);
+    const featM=new THREE.MeshLambertMaterial({color:0xfbfaf4}),feat2=new THREE.MeshLambertMaterial({color:0xe9e5d8}),bkM=new THREE.MeshLambertMaterial({color:0xf5b324}),cbM=new THREE.MeshLambertMaterial({color:0xe2302a});
+    const chk=new THREE.Group();chk.visible=false;ck.add(chk);
+    for(let k=0;k<13;k++){const f=new THREE.Mesh(new THREE.SphereGeometry(3.2,10,8),k%2?feat2:featM);const u=(k-6)/6;f.position.set(u*15,-8.2+Math.abs(u)*2.2+(k%3)*.4,-11+Math.abs(u)*1.5);f.scale.set(1.6,1,1.2);chk.add(f);}
+    for(let k=0;k<7;k++){const f=new THREE.Mesh(new THREE.ConeGeometry(1.4,5,6),featM);f.position.set((k-3)*4.2,-4.6,-11.6);f.rotation.z=(k-3)*.12;chk.add(f);}
+    const bk=new THREE.Mesh(new THREE.ConeGeometry(1.6,5,10),bkM);bk.rotation.x=-Math.PI/2;bk.position.set(0,-4.8,-15);chk.add(bk);
+    const wl=[-1,1].map(sd=>{const w=new THREE.Group();w.position.set(sd*12,-6,-9);const wm2=new THREE.Mesh(new THREE.SphereGeometry(4,10,8),featM);wm2.scale.set(.6,1.4,1.8);w.add(wm2);chk.add(w);return w;});
+    const cockpit=[hood,st,dash,trim,wheel];
     const disp=new THREE.Mesh(new THREE.PlaneGeometry(1.43,1),new THREE.MeshBasicMaterial({map:dispT,transparent:true,depthTest:false,depthWrite:false,fog:false}));disp.renderOrder=10;ck.add(disp);ck.traverse(o=>{if(o.material)o.material.userData.noTerr=true;});
-    return {cam,ck,hoodM,markM,trimM,wheel,col:'',dc,dg,dispT,disp,dkey:''};});
+    return {cam,ck,hoodM,markM,trimM,wheel,col:'',dc,dg,dispT,disp,dkey:'',chk,wl,cockpit};});
   // částice
   const PMAX=430,pPos=new Float32Array(PMAX*3),pCol=new Float32Array(PMAX*3),pg=new THREE.BufferGeometry();
   pg.setAttribute('position',new THREE.BufferAttribute(pPos,3));pg.setAttribute('color',new THREE.BufferAttribute(pCol,3));
   const parts=new THREE.Points(pg,new THREE.PointsMaterial({size:6,vertexColors:true,transparent:true,opacity:.85,depthWrite:false}));parts.frustumCulled=false;S.add(parts);
   if(TERR)S.traverse(o=>{if(o.isMesh||o.isPoints)o.frustumCulled=false;});
+  // kuřecí garáž: tři zdi, střecha, svítící strop a neonový nápis nad vraty
+  let garDoor=null,garEgg=null;
+  if(GARAGE&&T.free){const q=GARAGE,wm=new THREE.MeshLambertMaterial({color:0x9aa3ad}),rm=new THREE.MeshLambertMaterial({color:0x3a414a});
+    const bx=(w,h,d,m,x,y,z)=>{const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);b.position.set(x,y,z);S.add(b);return b;};
+    for(const wl of CITY.gwalls)bx(wl.w,70,wl.d,wm,wl.x,35,wl.y);
+    bx(q.w+10,8,q.d+16,rm,q.x,74,q.y);
+    const stripT=tex(64,16,(g,w,h)=>{for(let i=0;i<8;i++){g.fillStyle=i%2?'#1a1d21':'#f2c14e';g.beginPath();g.moveTo(i*8,0);g.lineTo(i*8+8,0);g.lineTo(i*8,h);g.lineTo(i*8-8,h);g.fill();}},true);
+    bx(6,14,q.d,new THREE.MeshLambertMaterial({map:stripT}),q.x+q.w/2,63,q.y);
+    const doorT=tex(64,64,(g,w,h)=>{g.fillStyle='#b8bfc7';g.fillRect(0,0,w,h);g.fillStyle='#8a929b';for(let y=0;y<h;y+=8)g.fillRect(0,y,w,2);},true);
+    const door=new THREE.Mesh(new THREE.BoxGeometry(4,1,q.d-q.t),new THREE.MeshLambertMaterial({map:doorT}));door.position.set(q.x+q.w/2-4,35,q.y);door.scale.y=70;S.add(door);garDoor=door;
+    const egg=new THREE.Group();egg.position.set(q.egg.x,0,q.egg.y);const em=new THREE.Mesh(new THREE.SphereGeometry(8,18,14),new THREE.MeshPhongMaterial({color:0xf2c14e,emissive:0x8a5a00,shininess:120,specular:0xffffff}));
+    em.scale.set(1,1.3,1);em.position.y=16;egg.add(em);const eg=new THREE.Sprite(new THREE.SpriteMaterial({map:glowT,color:0xffd36e,transparent:true,opacity:.8,blending:ADD,depthWrite:false}));eg.position.y=16;eg.scale.set(60,60,1);egg.add(eg);S.add(egg);garEgg=egg;
+    const lit=new THREE.Mesh(new THREE.PlaneGeometry(q.w-40,30),new THREE.MeshBasicMaterial({color:0xfff2c4}));lit.rotation.x=Math.PI/2;lit.position.set(q.x,69.5,q.y);S.add(lit);
+    const fl=new THREE.Mesh(new THREE.PlaneGeometry(q.w-10,q.d-10),new THREE.MeshLambertMaterial({color:0x2a2e33}));fl.rotation.x=-Math.PI/2;fl.position.set(q.x,1.6,q.y);S.add(fl);
+    const sT=tex(256,64,(g,w,h)=>{g.fillStyle='#120c1c';g.fillRect(0,0,w,h);g.font='italic 700 40px "Chakra Petch",sans-serif';g.textAlign='center';g.textBaseline='middle';g.shadowColor='#ff4fa0';g.shadowBlur=14;g.fillStyle='#ffd0e6';g.fillText('🐔 GARÁŽ',w/2,h/2+2);});
+    const sg=new THREE.Mesh(new THREE.PlaneGeometry(150,38),new THREE.MeshBasicMaterial({map:sT}));sg.position.set(q.x+q.w/2+5,98,q.y);sg.rotation.y=Math.PI/2;S.add(sg);
+    const sgb=new THREE.Mesh(new THREE.BoxGeometry(4,38,150),rm);sgb.position.set(q.x+q.w/2+2,98,q.y);S.add(sgb);}
   const gar=(()=>{const GS=new THREE.Scene();GS.background=new THREE.Color('#06080c');GS.fog=new THREE.Fog('#06080c',320,1000);
     GS.add(new THREE.HemisphereLight(0x9fb6d8,0x0a0c10,.55));
     const key=new THREE.SpotLight(0xffffff,1.7,900,.5,.55,1);key.position.set(60,240,150);GS.add(key);GS.add(key.target);
@@ -441,7 +478,7 @@ function build3D(reuse){
     const c=mkCar();c.bodyM.color.set(C.p1);c.dkM.color.set(C.p1dk);c.g.position.y=2;c.flame.visible=false;c.shield.visible=false;GS.add(c.g);
     return {S:GS,cam:new THREE.PerspectiveCamera(32,1,1,3000),car:c};})();
   gar.S.traverse(o=>{if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>{m.userData.noTerr=true;});});
-  return {renderer,S,sky,cars,cams,gar,pkM,oils,padT,cones,barLights,rline,peds,flags,lanterns,petals,petPos,petG,clouds,parts,pPos,pCol,pg,qT,banT,v3:new THREE.Vector3(),PMAX};
+  return {garDoor,garEgg,renderer,S,sky,cars,cams,gar,pkM,oils,padT,cones,barLights,rline,peds,flags,lanterns,petals,petPos,petG,clouds,parts,pPos,pCol,pg,qT,banT,v3:new THREE.Vector3(),PMAX};
 }
 // three.js má svislý zorný úhel; tady držíme vodorovný, aby bylo vidět do stran i na široké půlce obrazovky
 const vfov=(hDeg,asp,lo,hi)=>clamp(2*Math.atan(Math.tan(hDeg*Math.PI/360)/Math.max(.2,asp))*180/Math.PI,lo,hi);
@@ -460,11 +497,15 @@ function render3D(t,vs){
     m.brake.color.setHex(r.brake?0xff3b30:0x7a1a14);if(m.tailM)m.tailM.opacity=r.brake?1:.55;
     m.wheels[0].rotation.y=m.wheels[1].rotation.y=-r.steerS*.45;
     m.flame.visible=r.boostT>0;if(m.flame.visible)m.flame.scale.set(.7+Math.random()*.6,1,1);
+    if(m.ck){const ch=!!r.chicken;if(m.chk!==ch){m.chk=ch;m.parts.forEach(o=>o.visible=!ch);m.ck.visible=ch;}
+      if(ch){const sp=Math.min(1,Math.abs(r.vf)/260),ph=t*(5+sp*16);m.legs[0].rotation.z=Math.sin(ph)*.8*sp;m.legs[1].rotation.z=-Math.sin(ph)*.8*sp;
+        const fl=r.z>0||r.boostT>0?Math.sin(t*30)*.9:Math.sin(ph)*.15;m.wings[0].rotation.x=-fl;m.wings[1].rotation.x=fl;m.head.position.y=31+Math.abs(Math.sin(ph))*2.5*sp;m.head.position.x=14+Math.sin(ph)*1.5*sp;}}
     m.shield.visible=r.shieldT>0&&!(r.shieldT<1.5&&Math.sin(t*25)>0);
     if(m.shield.visible){m.shield.material.opacity=.26+.08*Math.sin(t*6)+r.shieldHit*1.2;const k2=1+r.shieldHit*.5;m.shield.scale.set(k2,k2,k2);}});
   PK.forEach((p,i)=>{const m=R.pkM[i];m.visible=p.on;if(!p.on)return;
     if(p.type==='coin')m.rotation.y=t*3+p.ph;else{m.rotation.set(t*.7+p.ph,t*1.3+p.ph,0);m.position.y=20+Math.sin(t*3+p.ph)*3;}});
   R.padT.offset.x=-((t*1.6)%1);
+  if(R.garDoor&&GARAGE){const o=GARAGE.open,h=Math.max(.5,70*(1-o));R.garDoor.scale.y=h;R.garDoor.position.y=70-h/2;R.garEgg.visible=GARAGE.egg.on;R.garEgg.rotation.y=t*2;R.garEgg.position.y=Math.sin(t*3)*3;}
   R.barLights.forEach((l,i)=>{l.visible=Math.sin(t*8+i*Math.PI)>0;});
   CONES.forEach((k,i)=>{const m=R.cones[i],fl=!k.on&&k.ft<.7;m.visible=k.on||fl;if(!m.visible)return;
     if(fl){const q=k.ft/.7;m.position.set(k.x0+k.fvx*k.ft,1.2+Math.sin(q*Math.PI)*34,k.y0+k.fvy*k.ft);m.rotation.set(q*7,0,q*5);}
@@ -502,6 +543,8 @@ function render3D(t,vs){
       cam.fov=vfov(104+zs*8+boost*7,V.w/Math.max(1,V.h),40,82);{const cx_=r.x-fx*2+lx,cz_=r.y-fz*2+lz;cam.position.set(cx_,14.5+sy+r.z+hAt(cx_,cz_),cz_);}cam.lookAt(r.x+fx*120+lx,hAt(r.x+fx*120+lx,r.y+fz*120+lz)+11+sy+r.z+(r.z>0?r.vz*.05:0)-(r.vf>40?r.brakeP*3.5:0),r.y+fz*120+lz);cam.rotateZ(-r.steerS*.035*Math.min(1,Math.abs(r.vf)/200)+sr);
       C3.ck.visible=true;if(C3.col!==r.color){C3.col=r.color;C3.hoodM.color.set(r.dk);C3.markM.color.set(r.color);C3.trimM.color.set(r.color);}
       C3.wheel.rotation.set(-.25,0,-r.steerS*1.7);
+      {const ch=!!r.chicken;if(C3.isCh!==ch){C3.isCh=ch;C3.cockpit.forEach(o=>o.visible=!ch);C3.chk.visible=ch;}
+        if(ch){const sp=Math.min(1,Math.abs(r.vf)/260),fl=r.z>0||r.boostT>0?Math.sin(t*28)*.8:Math.sin(t*(5+sp*14))*.18*sp;C3.wl[0].rotation.z=fl;C3.wl[1].rotation.z=-fl;C3.chk.position.y=Math.abs(Math.sin(t*(5+sp*14)))*.5*sp;C3.chk.rotation.z=-r.steerS*.08;}}
       // displej: drží se vpravo dole v zorném poli při jakémkoli poměru stran
       {const asp=V.w/Math.max(1,V.h),d=10.3,th=Math.tan(cam.fov*Math.PI/360)*d,hh=th*.42,x=Math.min(th*asp*.5,th*asp-hh*.95);
         C3.disp.position.set(x,-th*.52,-d);C3.disp.scale.set(hh,hh,1);C3.disp.rotation.set(-.12,-.18,0);
