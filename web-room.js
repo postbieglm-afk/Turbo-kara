@@ -37,7 +37,8 @@
   var ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]};
   var MQTT_URL='https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js';
   var BROKERS=(window.TK_BROKERS||['wss://broker.hivemq.com:8884/mqtt','wss://broker.emqx.io:8084/mqtt']);
-  var TOP='tkara1/';
+  var TOP='tkara1/',VER='spojení v3';
+  var NS={p2p:'…',srv:0,srvN:0,srvErr:''}; // stav pro diagnostiku
   var mqttP=null;
   function loadMqtt(){if(mqttP)return mqttP;mqttP=new Promise(function(res,rej){
     if(window.mqtt)return res(window.mqtt);var sc=document.createElement('script');sc.src=MQTT_URL;
@@ -70,9 +71,12 @@
     function startMqttHost(){
       if(mqttStarted)return;mqttStarted=true;
       loadMqtt().then(function(M){
+        NS.srvN=BROKERS.length;
         BROKERS.forEach(function(url,bi){
           var cl=mconnect(M,url,'tkh'+rid());
-          cl.on('connect',function(){cl.subscribe(TOP+code+'/u/+',{qos:0});});
+          var ok=false;
+          cl.on('connect',function(){if(!ok){ok=true;NS.srv++;}cl.subscribe(TOP+code+'/u/+',{qos:0});});
+          cl.on('close',function(){if(ok){ok=false;NS.srv--;}});
           cl.on('message',function(topic,buf){
             var cid=topic.split('/').pop(),id='m'+bi+'-'+cid,d;try{d=JSON.parse(buf.toString());}catch(e){return;}
             if(d.t==='hello'){addConn(id,function(x){cl.publish(TOP+code+'/d/'+cid,JSON.stringify(x),{qos:0});},'mqtt');return;}
@@ -81,14 +85,14 @@
             onMsg(id,d);});
           cl.on('error',function(){});
         });
-      }).catch(function(){});
+      }).catch(function(){NS.srvErr='knihovna se nenačetla';});
     }
     function startHost(){
       peer=new Peer(hid(code),{debug:0,config:ICE});
-      peer.on('open',function(){if(!resolved){resolved=true;resolveReady(api);}updateBanner();startMqttHost();});
+      peer.on('open',function(){NS.p2p='ok';if(!resolved){resolved=true;resolveReady(api);}updateBanner();startMqttHost();});
       peer.on('error',function(e){
         if(e&&e.type==='unavailable-id'){code=genCode();try{peer.destroy();}catch(x){}startHost();return;}
-        if(!resolved){resolved=true;resolveReady(api);}
+        NS.p2p='chyba '+(e&&e.type);if(!resolved){resolved=true;resolveReady(api);}
         startMqttHost(); // přímé spojení nejde → aspoň server
       });
       peer.on('connection',function(conn){
@@ -138,10 +142,11 @@
       if(mode||mqttTried)return;mqttTried=true;p2pErr=why||p2pErr;
       cstat('Přímé spojení nevyšlo, zkouším přes server…');
       loadMqtt().then(function(M){
-        var cid=rid(),up=TOP+code+'/u/'+cid,down=TOP+code+'/d/'+cid,clients=[],hello=null;
+        NS.srvN=BROKERS.length;var cid=rid(),up=TOP+code+'/u/'+cid,down=TOP+code+'/d/'+cid,clients=[],hello=null;
         BROKERS.forEach(function(url){
           var cl=mconnect(M,url,'tkc'+cid+clients.length,{topic:up,payload:'{"t":"bye"}',qos:0,retain:false});clients.push(cl);
-          cl.on('connect',function(){cl.subscribe(down,{qos:0},function(){cl.publish(up,'{"t":"hello"}',{qos:0});});});
+          var ok=false;
+          cl.on('connect',function(){if(!ok){ok=true;NS.srv++;}cl.subscribe(down,{qos:0},function(){cl.publish(up,'{"t":"hello"}',{qos:0});});});
           cl.on('message',function(topic,buf){var d;try{d=JSON.parse(buf.toString());}catch(e){return;}
             if(!mode){
               if(connected('mqtt',function(x){cl.publish(up,JSON.stringify(x),{qos:0});})){
@@ -156,7 +161,7 @@
         });
         hello=setInterval(function(){if(mode)return;clients.forEach(function(cl){if(cl.connected)cl.publish(up,'{"t":"hello"}',{qos:0});});},1500);
         setTimeout(function(){if(mode)return;clearInterval(hello);
-          cstat('Obrazovka '+code+' nenalezena. Na PC musí být otevřená čekárna (Solo / Multiplayer) s tímto kódem a hra musí být vepředu.'+(p2pErr?' <span style="opacity:.6">('+p2pErr+')</span>':''),true);},15000);
+          cstat('Obrazovka '+code+' nenalezena. Na PC musí být otevřená čekárna (Solo / Multiplayer) s tímto kódem a hra musí být vepředu. Na PC dej Ctrl+Shift+R (načíst nejnovější verzi).'+' <span style="opacity:.6">(['+VER+'] servery '+NS.srv+'/'+NS.srvN+(p2pErr?', '+p2pErr:'')+')</span>',true);},15000);
       }).catch(function(){cstat('Nepodařilo se načíst záložní spojení. Zkontroluj internet.'+(p2pErr?' ('+p2pErr+')':''),true);});
     }
     function startCtrl(){
@@ -193,11 +198,13 @@
     }
     bn.style.display='block';
     var url=location.origin+location.pathname+'?p='+code;
-    bn.innerHTML='<div style="font-size:12px;letter-spacing:.14em;color:#93a6b8">MOBIL JAKO VOLANT</div>'
+    var html='<div style="font-size:12px;letter-spacing:.14em;color:#93a6b8">MOBIL JAKO VOLANT</div>'
       +'<div style="font-size:13px;color:#93a6b8;margin-top:4px">Na mobilu otevři <b style="color:#eef3f7">'+location.host+location.pathname+'</b></div>'
       +'<div style="font-size:13px;color:#93a6b8">a zadej kód, nebo otevři přímý odkaz:</div>'
       +'<div style="font-size:34px;font-weight:700;font-style:italic;letter-spacing:.12em;color:#3fd8ff;margin:4px 0">'+code+'</div>'
-      +'<button id="tkCopy" style="font:inherit;font-size:13px;cursor:pointer;border:0;border-radius:3px;padding:6px 14px;background:#1fb3e2;color:#04121a">Zkopírovat odkaz</button>';
+      +'<button id="tkCopy" style="font:inherit;font-size:13px;cursor:pointer;border:0;border-radius:3px;padding:6px 14px;background:#1fb3e2;color:#04121a">Zkopírovat odkaz</button>'
+      +'<div style="font-size:11px;color:#6f8396;margin-top:6px">'+VER+' · přímé: '+NS.p2p+' · záložní servery: '+NS.srv+'/'+NS.srvN+(NS.srvErr?' ('+NS.srvErr+')':'')+'</div>';
+    if(bn.__h===html)return;bn.__h=html;bn.innerHTML=html;
     var cp=bn.querySelector('#tkCopy');
     if(cp)cp.onclick=function(){try{navigator.clipboard.writeText(url);cp.textContent='Zkopírováno';setTimeout(function(){cp.textContent='Zkopírovat odkaz';},1500);}catch(e){}};
   }
