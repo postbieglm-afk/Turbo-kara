@@ -132,7 +132,7 @@ function ctrlPeers(peers){
   const taken=new Set(peers.filter(pe=>!pe.sameTab&&pe.presence&&pe.presence.role==='ctrl').map(pe=>pe.presence.p));
   [0,1].forEach(p=>{byId('cp'+p).textContent='HRÁČ '+(p+1)+(taken.has(p)?' (obsazeno)':'');});
   const st=byId('cStatus'),rd=byId('cReady'),pz=byId('cPause'),info=byId('cInfo');
-  if(!room){st.textContent='Propojení není k dispozici. Jsi přihlášený do Claude a máš hru nasdílenou?';rd.hidden=true;pz.disabled=true;CT.off=false;info.textContent='';return;}
+  if(!room){st.textContent=(window.claude&&window.claude.webRoom?'Připojuji k obrazovce…':'Propojení není k dispozici. Jsi přihlášený do Claude a máš hru nasdílenou?');rd.hidden=true;pz.disabled=true;CT.off=false;info.textContent='';return;}
   if(!pad){st.textContent='Hledám obrazovku. Na iPadu nebo notebooku otevři hru a zvol Obrazovka.';rd.hidden=true;pz.disabled=true;CT.off=false;info.textContent='';return;}
   const pr=pad.presence,m=pr.m,solo=!!pr.solo;
   // 1 hráč proti AI: ovladač je vždy hráč 1 (volba hráče se přeskočí)

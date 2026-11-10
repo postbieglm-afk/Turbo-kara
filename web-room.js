@@ -18,7 +18,7 @@
 
   var peersCb=null,discCb=null,onH={},myPres={},resolved=false,resolveReady;
   var roomPromise=new Promise(function(r){resolveReady=r;});
-  window.claude={use:function(n){return n==='room'?roomPromise:Promise.resolve(null);}};
+  window.claude={webRoom:true,use:function(n){return n==='room'?roomPromise:Promise.resolve(null);}};
   function fire(t,m){var h=onH[t];if(h){try{h(m);}catch(e){}}}
   function firePeers(list){if(peersCb){try{peersCb({peers:list});}catch(e){}}}
 
@@ -42,7 +42,9 @@
     sendPresence=function(){broadcast();};
     sendEvent=function(t,d){conns.forEach(function(c){try{c.conn.send({t:'ev',topic:t,data:d});}catch(e){}});};
     function startHost(){
-      peer=new Peer(hid(code),{debug:0});
+      peer=new Peer(hid(code),{debug:0,config:{iceServers:[
+        {urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},
+        {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}]}});
       peer.on('open',function(){if(!resolved){resolved=true;resolveReady(api);}updateBanner();});
       peer.on('error',function(e){
         if(e&&e.type==='unavailable-id'){code=genCode();try{peer.destroy();}catch(x){}startHost();return;}
@@ -66,16 +68,45 @@
     currentPeers=function(){return hostPeers;};
     sendPresence=function(){if(conn&&conn.open)try{conn.send({t:'pres',pres:myPres});}catch(e){}};
     sendEvent=function(t,d){if(conn&&conn.open)try{conn.send({t:'ev',topic:t,data:d});}catch(e){}};
+    // stavový pruh na ovladači: vidět, co se děje a proč se to nepřipojilo
+    var cb=null;
+    function cstat(msg,bad){
+      if(!cb){cb=document.createElement('div');
+        cb.style.cssText='position:fixed;left:50%;bottom:max(10px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:70;max-width:92vw;text-align:center;'
+          +"font-family:'Chakra Petch','Barlow Condensed',sans-serif;font-size:14px;color:#eef3f7;background:rgba(9,15,24,.94);border:1px solid rgba(63,216,255,.4);border-radius:4px;padding:8px 14px";
+        document.body.appendChild(cb);}
+      if(!msg){cb.style.display='none';return;}
+      cb.style.display='block';cb.style.borderColor=bad?'rgba(255,122,108,.7)':'rgba(63,216,255,.4)';
+      cb.innerHTML=msg+(bad?' <button id="tkRetry" style="font:inherit;margin-left:8px;cursor:pointer;border:0;border-radius:3px;padding:4px 10px;background:#1fb3e2;color:#04121a">Zkusit znovu</button>'
+        +' <button id="tkOther" style="font:inherit;margin-left:4px;cursor:pointer;border:0;border-radius:3px;padding:4px 10px;background:rgba(255,255,255,.12);color:#eef3f7">Jiný kód</button>':'');
+      var r=cb.querySelector('#tkRetry');if(r)r.onclick=function(){location.reload();};
+      var o=cb.querySelector('#tkOther');if(o)o.onclick=function(){location.href=location.origin+location.pathname;};
+    }
+    var ICE={iceServers:[
+      {urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},
+      {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}
+    ]};
+    var tries=0,failT=null;
     function startCtrl(){
-      peer=new Peer({debug:0});
-      peer.on('open',function(){conn=peer.connect(hid(code),{reliable:true});
-        conn.on('open',function(){if(!resolved){resolved=true;resolveReady(api);}sendPresence();});
+      cstat('Připojuji k obrazovce '+code+'…');
+      peer=new Peer({debug:0,config:ICE});
+      peer.on('open',function(){
+        conn=peer.connect(hid(code),{reliable:true});
+        clearTimeout(failT);
+        failT=setTimeout(function(){if(conn&&conn.open)return;
+          cstat('Spojení se nepovedlo (síť blokuje přímé spojení, nebo PC není v čekárně s kódem '+code+').',true);},15000);
+        conn.on('open',function(){clearTimeout(failT);cstat('');if(!resolved){resolved=true;resolveReady(api);}sendPresence();});
         conn.on('data',function(d){if(d.t==='peers'){hostPeers=d.peers||[];firePeers(hostPeers);}
           else if(d.t==='ev')fire(d.topic,{peer:'HOST',data:d.data,sameTab:false});});
-        conn.on('close',function(){hostPeers=[];firePeers([]);if(discCb)discCb();});
-        conn.on('error',function(){});
+        conn.on('close',function(){hostPeers=[];firePeers([]);if(discCb)discCb();cstat('Spojení s obrazovkou se přerušilo.',true);});
+        conn.on('error',function(){cstat('Chyba spojení s obrazovkou.',true);});
       });
-      peer.on('error',function(e){if(!resolved){resolved=true;resolveReady(api);}}); // ponech ovladač, zkoušej dál
+      peer.on('error',function(e){
+        var t=e&&e.type;
+        if(t==='peer-unavailable')cstat('Kód '+code+' nenalezen. Na PC musí být otevřená čekárna (Solo / Multiplayer) s tímto kódem.',true);
+        else if(t==='network'||t==='server-error'||t==='socket-error'||t==='socket-closed')cstat('Nelze se spojit se spojovacím serverem ('+t+').',true);
+        else cstat('Chyba spojení: '+t,true);
+      });
     }
     startCtrl();
     // po načtení hry přepni rovnou do režimu ovladače
