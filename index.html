@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Turbo Kára</title>
+<!-- Hra je rozdělená do souborů: style.css (vzhled), *.js (logika). Pořadí skriptů níže je důležité: sdílejí jeden globální prostor. -->
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Racing+Sans+One&family=Barlow+Condensed:wght@500;700&family=Chakra+Petch:ital,wght@0,600;0,700;1,600;1,700&display=swap">
+<link rel="stylesheet" href="style.css">
+
+</head>
+<body>
+<div id="game">
+  <canvas id="gl"></canvas>
+  <canvas id="cv"></canvas>
+  <button id="pauseBtn" aria-label="Pauza" hidden><i></i><i></i></button>
+  <div class="overlay" id="ov"><div class="card" id="card"></div></div>
+  <div id="probe"></div>
+</div>
+<div id="ctrl" hidden>
+  <div class="c-top">
+    <span class="c-who" id="cWho">OVLADAČ</span>
+    <span class="c-status" id="cStatus">Připojuji…</span>
+    <span class="c-info" id="cInfo"></span>
+    <span class="c-ping" id="cPing"></span>
+    <button class="c-small" id="cReady">START</button>
+    <button class="c-small" id="cBack">MENU</button>
+  </div>
+  <div class="c-pick" id="cPick">
+    <h2>Kdo jsi?</h2>
+    <p>Telefon drž na šířku jako volant. Na velké obrazovce (iPad, notebook, televize) musí být hra otevřená v režimu Obrazovka.</p>
+    <div class="row"><button class="go" data-pick="0" id="cp0" style="background:var(--p1)">HRÁČ 1</button><button class="go two" data-pick="1" id="cp1">HRÁČ 2</button></div>
+  </div>
+  <div class="c-pad" id="cPad" hidden>
+    <button class="c-dir" id="cL" aria-label="Zatočit doleva"><b>L</b><i class="arr l"></i></button>
+    <div class="c-mid"><button id="cPause" aria-label="Pauza" disabled><i></i><i></i></button><button class="c-btn" id="cMenu">MENU</button></div>
+    <button class="c-dir" id="cR" aria-label="Zatočit doprava"><b>P</b><i class="arr r"></i></button>
+    <button class="c-btn" id="cItem">PŘEDMĚT</button>
+    <button class="c-btn" id="cView">POHLED</button>
+    <button class="c-btn" id="cBrake">DRIFT</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="core.js"></script>
+<script src="brno-data.js"></script>
+<script src="terrain.js"></script>
+<script src="tracks.js"></script>
+<script src="world.js"></script>
+<script src="audio.js"></script>
+<script src="game.js"></script>
+<script src="menu.js"></script>
+<script src="draw2d.js"></script>
+<script src="scene3d.js"></script>
+<script src="hud.js"></script>
+<script src="net.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
