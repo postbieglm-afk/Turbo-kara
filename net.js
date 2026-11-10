@@ -24,7 +24,7 @@ function wireRoom(r){
   r.on('pong',m=>{if(appScr!=='ctrl')return;const d=m.data||{};if(d.p===CT.p)gotPong(+d.n);});
 }
 const ctrlEl=document.getElementById('ctrl');
-const CT={p:-1,s:0,b:false,it:0,rq:0,pz:0,vw:0,lastHit:-1,lastCr:-1,lastOil:-1,lastLd:-1,lastDl:-1,lastMt:-1,off:false,pzm:''};
+const CT={p:-1,s:0,b:false,it:0,rq:0,pz:0,vw:0,mc:0,mi:-1,ml:'',lastHit:-1,lastCr:-1,lastOil:-1,lastLd:-1,lastDl:-1,lastMt:-1,off:false,pzm:''};
 // vibrace: Android přes navigator.vibrate; iPhone (iOS 18+) ho nemá, tam pomůže ťuknutí přes skrytý přepínač
 const VIB_OFF=[45,25,45],VIB_OIL=[140,40,140,40,220],VIB_HIT=[90,50,90,50,160];
 const canVibrate=typeof navigator!=='undefined'&&typeof navigator.vibrate==='function';
@@ -45,8 +45,10 @@ const roomReady=(()=>{
 function onPeersChange(ch){if(appScr==='ctrl')ctrlPeers(ch.peers);else padPeers(ch.peers);}
 function padPeers(peers){
   const now=[null,null],solo=soloNow();
+  netCtrl=peers.some(pe=>!pe.sameTab&&pe.presence&&pe.presence.role==='ctrl');
   for(const pe of peers){
     const pr=pe.presence||{};if(pr.role!=='ctrl'||pe.sameTab)continue;
+    applyMenu(pe.peer,pr);
     const p=pr.p===0||pr.p===1?(solo?0:pr.p):-1;if(p<0||now[p])continue;now[p]=pe;
     applyActs(pe.peer,p,+pr.it||0,+pr.rq||0,+pr.pz||0,+pr.vw||0);
     if(pr.ping!==undefined&&pongs[p]!==pr.ping){pongs[p]=pr.ping;room.presence({pong:[pongs[0],pongs[1]]}).catch(()=>{});}
@@ -56,9 +58,10 @@ function padPeers(peers){
 }
 function padBroadcast(now){
   if(!room||now-padT<120)return;
-  if(!(appScr==='lobby'||(appScr==='game'&&G.remote)))return;
+  const live=appScr==='lobby'||(appScr==='game'&&G.remote);
+  if(!live&&!(netCtrl&&(appScr==='menu'||appScr==='game')))return;
   padT=now;const st=appScr==='game'?standings():G.r;
-  room.presence({role:'pad',solo:soloNow()?1:0,m:appScr==='lobby'?'lobby':G.paused?'pause':G.mode,
+  room.presence({role:'pad',solo:soloNow()?1:0,m:appScr==='lobby'?'lobby':appScr==='menu'?'menu':!G.remote?'local':G.paused?'pause':G.mode,mn:menuSnap(),
     pos:G.r.map(r=>st.indexOf(r)+1),lap:G.r.map(r=>Math.min(LAPS,r.lapsDone+1)),laps:LAPS,
     it:G.r.map(r=>r.rollT>0?-1:r.item),co:G.r.map(r=>r.coins),hit:G.r.map(r=>r.hitN),fin:G.r.map(r=>r.finished?1:0),off:G.r.map(r=>r.off&&Math.abs(r.vf)>40&&G.mode==='race'?1:0),cr:G.r.map(r=>r.crashN),oil:G.r.map(r=>r.oilN),ld:G.r.map(r=>r.landN),dl:G.r.map(r=>r.dlN),mt:G.r.map(r=>r.mtN),dr:G.r.map(r=>r.drift?r.driftL+1:0)}).catch(()=>{});
 }
@@ -94,10 +97,10 @@ const byId=id=>document.getElementById(id);
 function showCtrl(){
   appScr='ctrl';audio();musicStop();engineStop();ov.hidden=true;document.body.classList.add('ctrlmode');ctrlEl.hidden=false;
   byId('cPick').hidden=CT.p>=0;byId('cPad').hidden=CT.p<0;byId('cBack').hidden=CT.p>=0;
-  ctrlPeers(room&&room.peers?room.peers():[]);
-  roomReady.then(()=>ctrlPeers(room&&room.peers?room.peers():[]));
+  ctrlPeers(room&&room.peers?room.peers():[]);ctrlSend();
+  roomReady.then(()=>{ctrlSend();ctrlPeers(room&&room.peers?room.peers():[]);});
 }
-function ctrlSend(){if(!room||CT.p<0)return;room.presence({role:'ctrl',p:CT.p,s:CT.s,b:CT.b,it:CT.it,rq:CT.rq,pz:CT.pz,vw:CT.vw}).catch(()=>{});}
+function ctrlSend(){if(!room)return;room.presence({role:'ctrl',p:CT.p,s:CT.s,b:CT.b,it:CT.it,rq:CT.rq,pz:CT.pz,vw:CT.vw,mc:CT.mc,mi:CT.mi,ml:CT.ml}).catch(()=>{});}
 let canEmit=true,pingN=0,rtt=null;const pingSent=new Map();
 function ctrlAct(){
   ctrlSend();buzz(12);
@@ -132,6 +135,7 @@ function ctrlPeers(peers){
   const taken=new Set(peers.filter(pe=>!pe.sameTab&&pe.presence&&pe.presence.role==='ctrl').map(pe=>pe.presence.p));
   [0,1].forEach(p=>{byId('cp'+p).textContent='HRÁČ '+(p+1)+(taken.has(p)?' (obsazeno)':'');});
   const st=byId('cStatus'),rd=byId('cReady'),pz=byId('cPause'),info=byId('cInfo');
+  if(!room||!peers.find(pe=>pe.presence&&pe.presence.role==='pad'))cMn.hidden=true;
   if(!room){st.textContent=(window.claude&&window.claude.webRoom?'Připojuji k obrazovce…':'Propojení není k dispozici. Jsi přihlášený do Claude a máš hru nasdílenou?');rd.hidden=true;pz.disabled=true;CT.off=false;info.textContent='';return;}
   if(!pad){st.textContent='Hledám obrazovku. Na iPadu nebo notebooku otevři hru a zvol Obrazovka.';rd.hidden=true;pz.disabled=true;CT.off=false;info.textContent='';return;}
   const pr=pad.presence,m=pr.m,solo=!!pr.solo;
@@ -142,7 +146,8 @@ function ctrlPeers(peers){
   rd.hidden=!(m==='lobby'||m==='over'||m==='pause');rd.textContent=m==='over'?'ODVETA':m==='pause'?'RESTART':'START';rd.classList.toggle('hot',m==='lobby'||m==='over');
   pz.disabled=!(m==='race'||m==='count'||m==='pause');
   if(CT.pzm!==(m==='pause')){CT.pzm=m==='pause';pz.innerHTML=CT.pzm?'<span class="play"></span>':'<i></i><i></i>';pz.setAttribute('aria-label',CT.pzm?'Pokračovat':'Pauza');}
-  st.textContent=m==='lobby'?'Připojeno, čeká se na start':m==='over'?'Konec závodu':m==='pause'?'Pauza':m==='count'?'Odpočet…':'Jedeš!';
+  const mir=ctrlMenu(pr,m,solo);
+  st.textContent=m==='menu'?'Menu na obrazovce':m==='local'?'Hra běží na obrazovce bez mobilu':m==='lobby'?'Připojeno, čeká se na start':m==='over'?'Konec závodu':m==='pause'?'Pauza':m==='count'?'Odpočet…':'Jedeš!';
   if(CT.p>=0&&Array.isArray(pr.pos)&&m!=='lobby'){
     const p=CT.p;info.textContent=(pr.fin&&pr.fin[p]?'V cíli · ':'')+(pr.pos[p]||'–')+'. místo · kolo '+((pr.lap||[])[p]||1)+'/'+(pr.laps||LAPS)+' · penízky '+((pr.co||[])[p]||0);
     const it=+((pr.it||[])[p]||0),btn=byId('cItem');
@@ -197,3 +202,47 @@ function localHaptics(now){
     r.hH=r.hitN;r.hC=r.crashN;r.hO=r.oilN;r.hL=r.landN;r.hD=r.dlN;r.hM=r.mtN;}
   if(now-hapT>220){hapT=now;if(G.mode==='race'&&G.r.some(r=>!r.ai&&!r.finished&&r.off&&Math.abs(r.vf)>40))buzz(VIB_OFF);}
 }
+
+/* ---------- menu na mobilu: mobil zrcadlí tlačítka z obrazovky a ťuknutím je mačká ----------
+   Obrazovka posílá v presence `mn` (nadpis + seznam tlačítek z otevřeného menu), mobil vrací `mc` (počítadlo ťuknutí),
+   `mi` (pořadí tlačítka) a `ml` (jeho popisek). Funguje pro jakékoli menu, není potřeba nic vyjmenovávat. */
+let netCtrl=false,mnEls=[],mnLab=[];const menuSeen=new Map();
+const MN_SKIP='[data-screen="ctrl"],[data-vol],.vpop,.vpop *,summary,[disabled],[aria-disabled="true"]';
+function mnLabel(el){const t=el.getAttribute('title')||el.getAttribute('aria-label')||'';if(t&&(el.matches('.chip,.mback')||el.querySelector('svg')&&!el.querySelector('b')&&el.textContent.trim().length<4))return t.slice(0,40);
+  const b=el.querySelector('b');let l=(b?b.textContent:el.textContent).replace(/\s+/g,' ').trim();if(l.length<3&&t)l=t;return l.slice(0,40);}
+function menuSnap(){
+  mnEls=[];mnLab=[];if(ov.hidden)return null;
+  const bt=[];
+  card.querySelectorAll('button,summary').forEach(el=>{
+    if(el.matches(MN_SKIP)||!el.getClientRects().length)return;
+    const l=mnLabel(el);if(!l)return;
+    const on=el.classList.contains('on')||el.getAttribute('aria-checked')==='true'||el.getAttribute('aria-pressed')==='true';
+    const big=el.matches('.mtile,.mmap,.mbtn,.go,.mopt'),tool=!!el.closest('.mtop')&&!el.matches('[data-back]');
+    mnEls.push(el);mnLab.push(l);bt.push([l,(on?1:0)|(big?2:0)|(tool?4:0)]);});
+  const mk=card.querySelector('.mk'),h=card.querySelector('h1,h2');
+  return {k:mk?mk.textContent.replace(/\s+/g,' ').trim():'',h:h?h.textContent.replace(/\s+/g,' ').trim():'',b:bt};
+}
+function applyMenu(peer,pr){
+  const mc=+pr.mc||0,seen=menuSeen.get(peer);
+  if(seen===undefined||mc<=seen){menuSeen.set(peer,Math.max(mc,seen||0));return;}
+  menuSeen.set(peer,mc);if(ov.hidden)return;
+  menuSnap();let el=mnEls[+pr.mi];
+  if(!el||mnLab[+pr.mi]!==pr.ml){const k=mnLab.indexOf(pr.ml);el=k>=0?mnEls[k]:null;}
+  if(el)setTimeout(()=>{try{el.click();}catch(e){}padT=0;},0);
+}
+const cMn=document.createElement('div');cMn.className='c-mn';cMn.hidden=true;ctrlEl.appendChild(cMn);let cMnKey='';
+const escH=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function ctrlMenu(pr,m,solo){
+  const mn=pr.mn,pickFirst=m==='lobby'&&!solo&&CT.p<0;
+  const show=!!(mn&&mn.b&&mn.b.length)&&(m==='menu'||m==='local'||m==='over'||m==='pause'||(m==='lobby'&&!pickFirst));
+  cMn.hidden=!show;
+  if(show){byId('cPick').hidden=true;byId('cPad').hidden=true;
+    const key=JSON.stringify(mn);if(key!==cMnKey){cMnKey=key;
+      cMn.innerHTML=`<div class="c-mn-h">${mn.k?`<span>${escH(mn.k)}</span>`:''}<h2>${escH(mn.h||'Menu')}</h2></div>
+        <div class="c-mn-b">${mn.b.map((b,i)=>b[1]&4?'':`<button class="c-mn-i${b[1]&1?' on':''}${b[1]&2?' big':''}" data-mi="${i}">${escH(b[0])}</button>`).join('')}</div>
+        <div class="c-mn-t">${mn.b.map((b,i)=>b[1]&4?`<button class="c-mn-i sm${b[1]&1?' on':''}" data-mi="${i}">${escH(b[0])}</button>`:'').join('')}</div>`;}}
+  else{byId('cPick').hidden=CT.p>=0;byId('cPad').hidden=CT.p<0;}
+  return show;
+}
+cMn.addEventListener('click',e=>{const b=e.target.closest('[data-mi]');if(!b)return;
+  const i=+b.dataset.mi;CT.mc++;CT.mi=i;CT.ml=b.textContent;buzz(10);b.classList.add('tap');setTimeout(()=>b.classList.remove('tap'),180);ctrlSend();});
