@@ -2,7 +2,7 @@
 
 Pouliční závody na tři kola v Tokiu a v Brně. Webová hra (HTML + JavaScript, 3D přes three.js).
 
-**Hrát:** https://postbieglm-afk.github.io/turbo-kara/
+**Hrát:** https://postbieglm-afk.github.io/Turbo-kara/
 
 ## Soubory
 - `index.html` – kostra stránky a pořadí skriptů (pořadí neměnit, skripty sdílejí jeden globální prostor)
