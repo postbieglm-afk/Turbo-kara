@@ -1,6 +1,7 @@
 /* Turbo Kára · web-room.js — spojení mobilu a obrazovky na veřejném webu (bez claude.ai).
    Staví „místnost“ se stejným rozhraním jako na claude.ai (presence/emit/on/onPeers),
-   ale povely jdou napřímo mezi zařízeními přes WebRTC (PeerJS) → mnohem nižší odezva.
+   ale povely jdou napřímo mezi zařízeními přes WebRTC (PeerJS) → mnohem nižší odezva;
+   když přímé spojení síť nepustí, jdou přes veřejný MQTT server (záloha).
    Na claude.ai se NEAKTIVUJE: tam už window.claude existuje a použije se původní spojení.
    Načítá se PŘED net.js. Hvězdicová topologie: obrazovka = rozbočovač, mobily se k ní připojí. */
 'use strict';
@@ -31,82 +32,146 @@
   };
   var sendPresence=function(){},sendEvent=function(){},currentPeers=function(){return [];};
 
+  // ---- dvě cesty: 1) přímé spojení WebRTC (PeerJS, nejnižší odezva),
+  //      2) záloha přes veřejný MQTT server (projde i tam, kde přímé spojení neprojde: iPhone, některé routery, mobilní data) ----
+  var ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]};
+  var MQTT_URL='https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js';
+  var BROKERS=(window.TK_BROKERS||['wss://broker.hivemq.com:8884/mqtt','wss://broker.emqx.io:8084/mqtt']);
+  var TOP='tkara1/';
+  var mqttP=null;
+  function loadMqtt(){if(mqttP)return mqttP;mqttP=new Promise(function(res,rej){
+    if(window.mqtt)return res(window.mqtt);var sc=document.createElement('script');sc.src=MQTT_URL;
+    sc.onload=function(){window.mqtt?res(window.mqtt):rej(new Error('mqtt'));};sc.onerror=function(){rej(new Error('mqtt load'));};
+    document.head.appendChild(sc);});return mqttP;}
+  function mconnect(M,url,id,will){var f=M.connect||(M.default&&M.default.connect);
+    return f(url,{clientId:id,clean:true,keepalive:20,reconnectPeriod:3000,connectTimeout:8000,will:will});}
+  function rid(){return Math.random().toString(36).slice(2,10);}
+
   var peer;
   if(isHost){
-    // ----- OBRAZOVKA: rozbočovač, čeká na připojení mobilů -----
-    var conns=new Map();
+    // ----- OBRAZOVKA: rozbočovač, čeká na připojení mobilů (oběma cestami) -----
+    var conns=new Map(); // id -> {send, pres, via, last}
     currentPeers=function(){var out=[];conns.forEach(function(c,id){out.push({peer:id,presence:c.pres,sameTab:false});});return out;};
     function peersFor(exclude){var out=[{peer:'HOST',presence:myPres,sameTab:false}];
       conns.forEach(function(c,id){if(id!==exclude)out.push({peer:id,presence:c.pres,sameTab:false});});return out;}
-    function broadcast(){conns.forEach(function(c,id){try{c.conn.send({t:'peers',peers:peersFor(id)});}catch(e){}});firePeers(currentPeers());}
+    function broadcast(){conns.forEach(function(c,id){try{c.send({t:'peers',peers:peersFor(id)});}catch(e){}});firePeers(currentPeers());}
     sendPresence=function(){broadcast();};
-    sendEvent=function(t,d){conns.forEach(function(c){try{c.conn.send({t:'ev',topic:t,data:d});}catch(e){}});};
+    sendEvent=function(t,d){conns.forEach(function(c){try{c.send({t:'ev',topic:t,data:d});}catch(e){}});};
+    function addConn(id,send,via){var c=conns.get(id);if(c){c.send=send;c.last=Date.now();}else conns.set(id,{send:send,pres:{},via:via,last:Date.now()});broadcast();}
+    function dropConn(id){if(conns.delete(id))broadcast();}
+    function onMsg(id,d){var c=conns.get(id);if(!c||!d)return;c.last=Date.now();
+      if(d.t==='pres'){c.pres=d.pres||{};broadcast();}
+      else if(d.t==='ev'){fire(d.topic,{peer:id,data:d.data,sameTab:false});
+        conns.forEach(function(o,oid){if(oid!==id)try{o.send({t:'ev',topic:d.topic,data:d.data});}catch(e){}});}}
+    // ovladače přes server, které zmlkly, vyhodíme
+    setInterval(function(){var now=Date.now();conns.forEach(function(c,id){if(c.via!=='mqtt')return;
+      if(now-c.last>15000)dropConn(id);else try{c.send({t:'hb'});}catch(e){}});},3000);
+    var mqttStarted=false;
+    function startMqttHost(){
+      if(mqttStarted)return;mqttStarted=true;
+      loadMqtt().then(function(M){
+        BROKERS.forEach(function(url,bi){
+          var cl=mconnect(M,url,'tkh'+rid());
+          cl.on('connect',function(){cl.subscribe(TOP+code+'/u/+',{qos:0});});
+          cl.on('message',function(topic,buf){
+            var cid=topic.split('/').pop(),id='m'+bi+'-'+cid,d;try{d=JSON.parse(buf.toString());}catch(e){return;}
+            if(d.t==='hello'){addConn(id,function(x){cl.publish(TOP+code+'/d/'+cid,JSON.stringify(x),{qos:0});},'mqtt');return;}
+            if(d.t==='bye'){dropConn(id);return;}
+            if(!conns.has(id))addConn(id,function(x){cl.publish(TOP+code+'/d/'+cid,JSON.stringify(x),{qos:0});},'mqtt');
+            onMsg(id,d);});
+          cl.on('error',function(){});
+        });
+      }).catch(function(){});
+    }
     function startHost(){
-      peer=new Peer(hid(code),{debug:0,config:{iceServers:[
-        {urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},
-        {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}]}});
-      peer.on('open',function(){if(!resolved){resolved=true;resolveReady(api);}updateBanner();});
+      peer=new Peer(hid(code),{debug:0,config:ICE});
+      peer.on('open',function(){if(!resolved){resolved=true;resolveReady(api);}updateBanner();startMqttHost();});
       peer.on('error',function(e){
         if(e&&e.type==='unavailable-id'){code=genCode();try{peer.destroy();}catch(x){}startHost();return;}
-        if(!resolved){resolved=true;resolveReady(e&&e.type==='browser-incompatible'?null:api);}
+        if(!resolved){resolved=true;resolveReady(api);}
+        startMqttHost(); // přímé spojení nejde → aspoň server
       });
       peer.on('connection',function(conn){
-        conn.on('open',function(){conns.set(conn.peer,{conn:conn,pres:{}});broadcast();});
-        conn.on('data',function(d){var c=conns.get(conn.peer);if(!c)return;
-          if(d.t==='pres'){c.pres=d.pres||{};broadcast();}
-          else if(d.t==='ev'){fire(d.topic,{peer:conn.peer,data:d.data,sameTab:false});
-            conns.forEach(function(o,id){if(id!==conn.peer)try{o.conn.send({t:'ev',topic:d.topic,data:d.data});}catch(e){}});}
-        });
-        conn.on('close',function(){conns.delete(conn.peer);broadcast();});
-        conn.on('error',function(){conns.delete(conn.peer);broadcast();});
+        conn.on('open',function(){addConn(conn.peer,function(x){conn.send(x);},'p2p');});
+        conn.on('data',function(d){onMsg(conn.peer,d);});
+        conn.on('close',function(){dropConn(conn.peer);});
+        conn.on('error',function(){dropConn(conn.peer);});
       });
     }
     startHost();
   } else {
-    // ----- MOBIL: připojí se k obrazovce podle kódu z odkazu -----
-    var hostPeers=[],conn=null;
+    // ----- MOBIL: zkusí přímé spojení; když do pár vteřin nevyjde, přepne na server -----
+    var hostPeers=[],mode=null,send=function(){},lastHost=0;
     currentPeers=function(){return hostPeers;};
-    sendPresence=function(){if(conn&&conn.open)try{conn.send({t:'pres',pres:myPres});}catch(e){}};
-    sendEvent=function(t,d){if(conn&&conn.open)try{conn.send({t:'ev',topic:t,data:d});}catch(e){}};
+    sendPresence=function(){send({t:'pres',pres:myPres});};
+    sendEvent=function(t,d){send({t:'ev',topic:t,data:d});};
     // stavový pruh na ovladači: vidět, co se děje a proč se to nepřipojilo
-    var cb=null;
-    function cstat(msg,bad){
+    var cb=null,cbT=null;
+    function cstat(msg,bad,hideAfter){
       if(!cb){cb=document.createElement('div');
         cb.style.cssText='position:fixed;left:50%;bottom:max(10px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:70;max-width:92vw;text-align:center;'
           +"font-family:'Chakra Petch','Barlow Condensed',sans-serif;font-size:14px;color:#eef3f7;background:rgba(9,15,24,.94);border:1px solid rgba(63,216,255,.4);border-radius:4px;padding:8px 14px";
         document.body.appendChild(cb);}
+      clearTimeout(cbT);
       if(!msg){cb.style.display='none';return;}
       cb.style.display='block';cb.style.borderColor=bad?'rgba(255,122,108,.7)':'rgba(63,216,255,.4)';
       cb.innerHTML=msg+(bad?' <button id="tkRetry" style="font:inherit;margin-left:8px;cursor:pointer;border:0;border-radius:3px;padding:4px 10px;background:#1fb3e2;color:#04121a">Zkusit znovu</button>'
         +' <button id="tkOther" style="font:inherit;margin-left:4px;cursor:pointer;border:0;border-radius:3px;padding:4px 10px;background:rgba(255,255,255,.12);color:#eef3f7">Jiný kód</button>':'');
       var r=cb.querySelector('#tkRetry');if(r)r.onclick=function(){location.reload();};
       var o=cb.querySelector('#tkOther');if(o)o.onclick=function(){location.href=location.origin+location.pathname;};
+      if(hideAfter)cbT=setTimeout(function(){cb.style.display='none';},hideAfter);
     }
-    var ICE={iceServers:[
-      {urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},
-      {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}
-    ]};
-    var tries=0,failT=null;
+    function onData(d){if(!d)return;lastHost=Date.now();
+      if(d.t==='peers'){hostPeers=d.peers||[];firePeers(hostPeers);}
+      else if(d.t==='ev')fire(d.topic,{peer:'HOST',data:d.data,sameTab:false});}
+    function connected(via,sender){
+      if(mode)return false;mode=via;send=sender;lastHost=Date.now();
+      if(!resolved){resolved=true;resolveReady(api);}
+      cstat(via==='p2p'?'Připojeno napřímo':'Připojeno přes server (přímé spojení síť nepustila)',false,2500);
+      sendPresence();return true;}
+    function lost(){if(!mode)return;hostPeers=[];firePeers([]);if(discCb)discCb();cstat('Spojení s obrazovkou se přerušilo.',true);}
+    // hlídání: když obrazovka dlouho mlčí (přes server), ohlas přerušení
+    setInterval(function(){if(mode==='mqtt'&&Date.now()-lastHost>12000)lost();},3000);
+
+    var p2pErr='',mqttTried=false;
+    function startMqttCtrl(why){
+      if(mode||mqttTried)return;mqttTried=true;p2pErr=why||p2pErr;
+      cstat('Přímé spojení nevyšlo, zkouším přes server…');
+      loadMqtt().then(function(M){
+        var cid=rid(),up=TOP+code+'/u/'+cid,down=TOP+code+'/d/'+cid,clients=[],hello=null;
+        BROKERS.forEach(function(url){
+          var cl=mconnect(M,url,'tkc'+cid+clients.length,{topic:up,payload:'{"t":"bye"}',qos:0,retain:false});clients.push(cl);
+          cl.on('connect',function(){cl.subscribe(down,{qos:0},function(){cl.publish(up,'{"t":"hello"}',{qos:0});});});
+          cl.on('message',function(topic,buf){var d;try{d=JSON.parse(buf.toString());}catch(e){return;}
+            if(!mode){
+              if(connected('mqtt',function(x){cl.publish(up,JSON.stringify(x),{qos:0});})){
+                clearInterval(hello);
+                // ostatní servery už nepotřebujeme
+                clients.forEach(function(o){if(o!==cl)try{o.end(true);}catch(e){}});
+                setInterval(function(){cl.publish(up,'{"t":"ka"}',{qos:0});},4000);
+              }
+            }
+            if(mode==='mqtt')onData(d);});
+          cl.on('error',function(){});
+        });
+        hello=setInterval(function(){if(mode)return;clients.forEach(function(cl){if(cl.connected)cl.publish(up,'{"t":"hello"}',{qos:0});});},1500);
+        setTimeout(function(){if(mode)return;clearInterval(hello);
+          cstat('Obrazovka '+code+' nenalezena. Na PC musí být otevřená čekárna (Solo / Multiplayer) s tímto kódem a hra musí být vepředu.'+(p2pErr?' <span style="opacity:.6">('+p2pErr+')</span>':''),true);},15000);
+      }).catch(function(){cstat('Nepodařilo se načíst záložní spojení. Zkontroluj internet.'+(p2pErr?' ('+p2pErr+')':''),true);});
+    }
     function startCtrl(){
       cstat('Připojuji k obrazovce '+code+'…');
-      peer=new Peer({debug:0,config:ICE});
+      // když přímé spojení do 6 s nenaběhne, jdi přes server
+      setTimeout(function(){if(!mode)startMqttCtrl('přímé spojení neodpovídá');},6000);
+      try{peer=new Peer({debug:0,config:ICE});}catch(e){startMqttCtrl('WebRTC nejde');return;}
       peer.on('open',function(){
-        conn=peer.connect(hid(code),{reliable:true});
-        clearTimeout(failT);
-        failT=setTimeout(function(){if(conn&&conn.open)return;
-          cstat('Spojení se nepovedlo (síť blokuje přímé spojení, nebo PC není v čekárně s kódem '+code+').',true);},15000);
-        conn.on('open',function(){clearTimeout(failT);cstat('');if(!resolved){resolved=true;resolveReady(api);}sendPresence();});
-        conn.on('data',function(d){if(d.t==='peers'){hostPeers=d.peers||[];firePeers(hostPeers);}
-          else if(d.t==='ev')fire(d.topic,{peer:'HOST',data:d.data,sameTab:false});});
-        conn.on('close',function(){hostPeers=[];firePeers([]);if(discCb)discCb();cstat('Spojení s obrazovkou se přerušilo.',true);});
-        conn.on('error',function(){cstat('Chyba spojení s obrazovkou.',true);});
+        var conn=peer.connect(hid(code),{reliable:true});
+        conn.on('open',function(){if(!connected('p2p',function(x){if(conn.open)try{conn.send(x);}catch(e){}}))try{conn.close();}catch(e){}});
+        conn.on('data',function(d){if(mode==='p2p')onData(d);});
+        conn.on('close',function(){if(mode==='p2p')lost();});
+        conn.on('error',function(e){if(mode==='p2p')lost();else startMqttCtrl('přímé: '+((e&&(e.type||e.message))||'chyba'));});
       });
-      peer.on('error',function(e){
-        var t=e&&e.type;
-        if(t==='peer-unavailable')cstat('Kód '+code+' nenalezen. Na PC musí být otevřená čekárna (Solo / Multiplayer) s tímto kódem.',true);
-        else if(t==='network'||t==='server-error'||t==='socket-error'||t==='socket-closed')cstat('Nelze se spojit se spojovacím serverem ('+t+').',true);
-        else cstat('Chyba spojení: '+t,true);
-      });
+      peer.on('error',function(e){if(!mode)startMqttCtrl('přímé: '+((e&&e.type)||'chyba'));});
     }
     startCtrl();
     // po načtení hry přepni rovnou do režimu ovladače
