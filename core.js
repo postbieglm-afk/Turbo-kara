@@ -23,7 +23,7 @@ let DISP=cssVar('--display'),UIF=cssVar('--ui'),HUDF="'Chakra Petch','Barlow Con
 try{document.fonts&&document.fonts.ready.then(()=>{DISP=cssVar('--display');UIF=cssVar('--ui');});}catch(e){}
 
 function resize(){
-  const dpr=Math.min(2,window.devicePixelRatio||1);
+  const dpr=Math.min(1.5,window.devicePixelRatio||1); // strop 1,5×: na Retině/4K o polovinu méně pixelů, text je pořád ostrý
   W=cv.clientWidth;H=cv.clientHeight;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
   ctx.setTransform(dpr,0,0,dpr,0,0);
   const cs=getComputedStyle(probe);safeT=parseFloat(cs.paddingTop)||0;safeB=parseFloat(cs.paddingBottom)||0;

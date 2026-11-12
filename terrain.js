@@ -56,4 +56,44 @@ gl_Position=projectionMatrix*mvPosition;`);
   P.customProgramCacheKey=function(){return (ck?ck.call(this):'')+(TERR&&!this.userData.noTerr?(this.userData.terrN?'TN':'T'):'');};
 }
 if(window.THREE)hookTerrain();
+/* ---------- ořezávání mimo záběr (frustum culling), které počítá s terénem ----------
+   Terén zvedá vrcholy až ve vertex shaderu, takže three.js neví, kde objekt doopravdy je. Tady to doplníme:
+   koule objektu se posune na výšku terénu pod ní a trochu zvětší (svahy do 40 %). Velké celky (domy, stromy, lampy)
+   se rozdělí na čtverce CULL_CELL×CULL_CELL, aby se kreslily jen ty v záběru. */
+const CULL_CELL=1600;
+const noTerrOf=o=>{const m=o.material;if(!m)return true;return Array.isArray(m)?m.some(x=>x.userData.noTerr):!!m.userData.noTerr;};
+function terrSphere(sp){if(TERR){sp.center.y+=hAt(sp.center.x,sp.center.z);sp.radius+=sp.radius*.4+12;}return sp;}
+function hookCulling(){
+  const F=THREE.Frustum.prototype;if(F.__tc)return;F.__tc=1;const sp=new THREE.Sphere();
+  F.intersectsObject=function(o){
+    const ud=o.userData;
+    if(ud.bs)sp.copy(ud.bs);
+    else{const g=o.geometry;if(!g)return true;if(g.boundingSphere===null)g.computeBoundingSphere();
+      sp.copy(g.boundingSphere).applyMatrix4(o.matrixWorld);if(TERR&&!noTerrOf(o))terrSphere(sp);}
+    return this.intersectsSphere(sp);};
+}
+if(window.THREE)hookCulling();
+// koule pro skupinu vrcholů/instancí ve světových souřadnicích (už i s terénem)
+function sphereFromBox(b,o){const sp=new THREE.Sphere();b.getBoundingSphere(sp);if(!noTerrOf(o))terrSphere(sp);return sp;}
+// rozdělí statický InstancedMesh na čtverce; vrátí skupinu, nebo null, když to nemá smysl
+function chunkInst(im){
+  const n=im.count,a=im.instanceMatrix.array,ic=im.instanceColor,g=im.geometry;if(n<16)return null;
+  if(g.boundingSphere===null)g.computeBoundingSphere();
+  const gs=g.boundingSphere,B=new Map();
+  for(let i=0;i<n;i++){const k=Math.floor(a[i*16+12]/CULL_CELL)+','+Math.floor(a[i*16+14]/CULL_CELL);let l=B.get(k);if(!l)B.set(k,l=[]);l.push(i);}
+  if(B.size<2)return null;
+  const grp=new THREE.Group(),m=new THREE.Matrix4(),c=new THREE.Vector3(),box=new THREE.Box3(),v=new THREE.Vector3();
+  B.forEach(ids=>{const cm=new THREE.InstancedMesh(g,im.material,ids.length);box.makeEmpty();
+    ids.forEach((i,j)=>{for(let q=0;q<16;q++)cm.instanceMatrix.array[j*16+q]=a[i*16+q];
+      if(ic){if(!cm.instanceColor)cm.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(ids.length*3),3);for(let q=0;q<3;q++)cm.instanceColor.array[j*3+q]=ic.array[i*3+q];}
+      m.fromArray(a,i*16);c.copy(gs.center).applyMatrix4(m);const r=gs.radius*m.getMaxScaleOnAxis();
+      box.expandByPoint(v.set(c.x-r,c.y-r,c.z-r));box.expandByPoint(v.set(c.x+r,c.y+r,c.z+r));});
+    cm.userData.bs=sphereFromBox(box,im);cm.frustumCulled=true;cm.renderOrder=im.renderOrder;cm.visible=im.visible;grp.add(cm);});
+  return grp;
+}
+// po postavení scény: rozdělí velké statické InstancedMeshe (pohyblivé chodce a lampiony vynechá)
+function cullPrep(S,skip){
+  const list=S.children.filter(o=>o.isInstancedMesh&&!skip.includes(o));
+  list.forEach(im=>{const grp=chunkInst(im);if(grp){S.remove(im);S.add(grp);}});
+}
 const brnoW=(px,py)=>[(px-1128)*5,(py-1238)*5];

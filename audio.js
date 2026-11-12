@@ -1,4 +1,4 @@
-/* Turbo Kára · audio.js: zvuk */
+/* Turbo Kára · audio.js: zvukové efekty a motor: audio() start, sfx(), engineStart/Update/Stop, vítr, klakson, fxMute(). Hudba je v music.js a music-data.js. */
 'use strict';
 /* ---------- zvuk ---------- */
 let AC=null,NOISE=null,MASTER=null,OUT=null,ENG=[];
@@ -14,7 +14,7 @@ function setSound(on){soundOn=on;try{localStorage.setItem('tk-sound',on?'1':'0')
 // 100 % hudby = původní hlasitost, výchozí 30 % je zhruba o 16 dB tišší
 const muGain=()=>.5*Math.pow(VOL.mu,1.5);
 function setVol(k,v){VOL[k]=Math.min(1,Math.max(0,v));try{localStorage.setItem(k==='mu'?'tk-vmu':'tk-vfx',String(VOL[k]));}catch(e){}
-  if(!AC)return;const t=AC.currentTime;if(k==='fx'&&MASTER)MASTER.gain.setTargetAtTime(VOL.fx,t,.03);if(k==='mu'&&MUSIC.playing&&MUSIC.bus)MUSIC.bus.gain.setTargetAtTime(muGain(),t,.03);}
+  if(!AC)return;const t=AC.currentTime;if(k==='fx'&&MASTER&&!FXMUTE)MASTER.gain.setTargetAtTime(VOL.fx,t,.03);if(k==='mu'&&MUSIC.playing&&MUSIC.bus)MUSIC.bus.gain.setTargetAtTime(muGain()*(MUSIC.f||1),t,.03);}
 function sfx(type){
   const ac=AC;if(!ac||appScr!=='game')return;const t=ac.currentTime;
   // tón s měkkým náběhem; ‚bell' = sinus + tichá oktáva, zní jako zvonek, ne jako pípák
@@ -78,106 +78,9 @@ function windStart(){windStop();if(!AC)return;try{const b=AC.createBuffer(1,AC.s
   const s=AC.createBufferSource(),f=AC.createBiquadFilter(),g=AC.createGain();s.buffer=b;s.loop=true;f.type='bandpass';f.frequency.value=420;f.Q.value=.6;g.gain.value=0;s.connect(f).connect(g).connect(MASTER);s.start();WINDS={s,f,g};}catch(e){WINDS=null;}}
 function windStop(){if(WINDS){try{WINDS.s.stop();WINDS.g.disconnect();}catch(e){}WINDS=null;}}
 function engineStop(){ENG.forEach(e=>{try{e.o.stop();e.o2.stop();e.sub.stop();e.g.disconnect();if(e.full){e.n.stop();e.sk.stop();e.rb.stop();e.ng.disconnect();e.skg.disconnect();e.rg.disconnect();}}catch(x){}});ENG=[];windStop();}
-/* ---------- hudba v menu: vlastní crunk a hip-hop skladby generované v prohlížeči ---------- */
-const MUSIC={on:true,idx:0,playing:false,step:0,next:0,timer:null,bus:null};
-try{if(localStorage.getItem('tk-music')==='0')MUSIC.on=false;const v=+localStorage.getItem('tk-song');if(v>=0&&v<4)MUSIC.idx=v;}catch(e){}
-const mN=m=>440*Math.pow(2,(m-69)/12);
-// skladby: vzory po šestnáctinách (x = úder), noty [krok, midi, délka v krocích]
-const SONGS=[
-  {name:'GARÁŽ',bpm:100,sw:.1,bars:4,
-    kick:['x.....x.x.......','x.....x.x..x....','x.....x.x.......','x.....x.x...x.x.'],clap:'....x.......x...',snare:'....x.......x...',
-    hat:['x.x.x.x.x.x.x.x.','x.x.x.x.x.x.x.x.','x.x.x.x.x.x.x.x.','x.x.x.x.x.xxxxxx'],ohat:'..............x.',
-    bass:[[[0,28,6],[6,28,2],[8,35,4],[12,33,4]],[[0,28,6],[6,31,2],[8,26,8]]],
-    whistle:[[[0,76,3],[3,76,1],[4,79,2],[6,76,2],[8,74,4],[12,71,2],[14,74,2]],[[0,76,3],[3,76,1],[4,79,2],[6,81,2],[8,79,6]],
-      [[0,76,3],[3,76,1],[4,79,2],[6,76,2],[8,74,4],[12,71,2],[14,74,2]],[[0,83,2],[2,81,2],[4,79,2],[6,76,2],[8,74,2],[10,76,6]]],
-    stab:[[[0,[64,67,71],2]],[],[[0,[62,67,71],2]],[]]},
-  {name:'NEON DRIFT',bpm:140,sw:0,bars:4,
-    kick:['x.........x.....','x.....x...x..x..'],snare:'........x.......',clap:'........x.......',
-    hat:['x.x.x.x.xxx.x.x.','x.x.xxx.x.x.xxxx'],ohat:'......x.........',
-    bass:[[[0,33,8],[10,33,3],[13,36,3]],[[0,31,8],[10,28,6]]],
-    pluck:[[[0,69,2],[2,72,2],[4,76,2],[6,72,2],[8,74,2],[10,72,2],[12,69,2],[14,67,2]],[[0,69,2],[2,72,2],[4,76,2],[6,79,2],[8,77,2],[10,76,2],[12,74,2],[14,72,2]],
-      [[0,69,2],[2,72,2],[4,76,2],[6,72,2],[8,74,2],[10,72,2],[12,69,2],[14,67,2]],[[0,65,2],[2,69,2],[4,72,2],[6,76,2],[8,74,8]]]},
-  {name:'BOUNCE',bpm:104,sw:.12,bars:4,
-    kick:'x..x..x...x..x..',clap:'....x.......x...',hat:'xxx.xxx.xxx.xxxx',cow:'x..x..x...x.x...',
-    sqbass:[[[0,31,2],[3,31,1],[4,43,1],[6,31,2],[8,34,2],[10,36,2],[12,38,2],[14,36,2]],[[0,29,2],[3,29,1],[4,41,1],[6,29,2],[8,33,2],[10,34,2],[12,36,2],[14,34,2]]],
-    stab:[[[2,[67,70,74],1],[6,[67,70,74],1],[10,[67,70,74],1],[14,[67,70,74],1]],[[2,[65,69,72],1],[6,[65,69,72],1],[10,[65,69,72],1],[14,[65,69,72],1]]],
-    saw:[[],[],[[0,79,2],[2,77,2],[4,74,4],[8,77,2],[10,79,2],[12,82,4]],[[0,81,2],[2,79,2],[4,77,2],[6,74,2],[8,72,8]]]},
-  {name:'PODZEMKA',bpm:90,sw:.08,bars:4,
-    kick:['x.......x.x.....','x.....x...x.....'],snare:'....x.......x...',clap:'............x...',hat:'x.xxx.x.x.xxx.x.',ohat:'......x.........',
-    bass:[[[0,26,7],[8,26,3],[11,29,5]],[[0,24,7],[8,24,3],[11,22,5]]],
-    stab:[[[0,[62,65,69],2],[3,[62,65,69],1],[6,[60,64,67],2]],[[0,[58,62,65],2],[3,[58,62,65],1],[6,[57,60,64],4]]],
-    whistle:[[],[],[[8,74,2],[10,77,2],[12,81,4]],[[8,79,2],[10,77,2],[12,74,4]]]}];
-// nástroje
-const MI={
-  noise(t,o,dur,vol,type,freq,q){const s=AC.createBufferSource(),f=AC.createBiquadFilter(),g=AC.createGain();s.buffer=NOISE;f.type=type;f.frequency.value=freq;f.Q.value=q||1;
-    g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);s.connect(f).connect(g).connect(o);const off=Math.random()*.2;s.start(t,off);s.stop(t+dur+.02);},
-  osc(t,o,type,f0,f1,dur,vol,att){const s=AC.createOscillator(),g=AC.createGain();s.type=type;s.frequency.setValueAtTime(f0,t);if(f1&&f1!==f0)s.frequency.exponentialRampToValueAtTime(f1,t+Math.min(dur,.12));
-    g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(vol,t+(att||.005));g.gain.exponentialRampToValueAtTime(.001,t+dur);s.connect(g).connect(o);s.start(t);s.stop(t+dur+.03);return s;},
-  kick(t,o){MI.osc(t,o,'sine',170,42,.45,1);MI.noise(t,o,.02,.25,'lowpass',3000);},
-  snare(t,o){MI.noise(t,o,.17,.45,'bandpass',1900,.8);MI.osc(t,o,'triangle',200,120,.09,.28);},
-  clap(t,o){for(let k=0;k<3;k++)MI.noise(t+k*.011,o,.03,.4,'bandpass',1500,1.2);MI.noise(t+.03,o,.2,.32,'bandpass',1300,1);},
-  hat(t,o,open){MI.noise(t,o,open?.24:.035,open?.13:.16,'highpass',7600,.7);},
-  cow(t,o){const f=AC.createBiquadFilter();f.type='bandpass';f.frequency.value=2100;f.Q.value=2;f.connect(o);MI.osc(t,f,'square',545,545,.22,.22);MI.osc(t,f,'square',815,815,.22,.16);},
-  bass(t,m,d,o){const s=AC.createOscillator(),w=AC.createWaveShaper(),g=AC.createGain(),c=new Float32Array(256);for(let i=0;i<256;i++){const x=i/128-1;c[i]=Math.tanh(x*2.2);}w.curve=c;
-    s.type='sine';s.frequency.setValueAtTime(mN(m)*1.6,t);s.frequency.exponentialRampToValueAtTime(mN(m),t+.05);
-    g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(.7,t+.01);g.gain.setValueAtTime(.62,t+d*.75);g.gain.exponentialRampToValueAtTime(.001,t+d+.1);s.connect(w).connect(g).connect(o);s.start(t);s.stop(t+d+.15);},
-  sqbass(t,m,d,o){const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(900,t);f.frequency.exponentialRampToValueAtTime(260,t+d);f.connect(o);MI.osc(t,f,'square',mN(m),mN(m),d+.05,.3);MI.osc(t,o,'sine',mN(m),mN(m),d+.05,.35);},
-  whistle(t,m,d,o){const s=AC.createOscillator(),l=AC.createOscillator(),lg=AC.createGain(),g=AC.createGain();s.type='sine';s.frequency.setValueAtTime(mN(m)*.97,t);s.frequency.linearRampToValueAtTime(mN(m),t+.03);
-    l.frequency.value=6.2;lg.gain.value=mN(m)*.012;l.connect(lg).connect(s.frequency);g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(.16,t+.02);g.gain.setValueAtTime(.14,t+d*.8);g.gain.exponentialRampToValueAtTime(.001,t+d+.06);
-    s.connect(g).connect(o);s.start(t);l.start(t);s.stop(t+d+.1);l.stop(t+d+.1);MI.osc(t,o,'triangle',mN(m+12),mN(m+12),d,.025,.02);},
-  pluck(t,m,d,o){const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(3800,t);f.frequency.exponentialRampToValueAtTime(500,t+.25);f.connect(o);MI.osc(t,f,'triangle',mN(m),mN(m),.32,.22);MI.osc(t,f,'square',mN(m+12),mN(m+12),.12,.05);},
-  saw(t,m,d,o){const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=2300;f.Q.value=3;f.connect(o);for(const dt of [-7,7]){const s=MI.osc(t,f,'sawtooth',mN(m),mN(m),d+.08,.06,.01);s.detune.value=dt;}},
-  stab(t,ms,d,o){const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(2600,t);f.frequency.exponentialRampToValueAtTime(700,t+d+.15);f.connect(o);for(const m of ms){const s=MI.osc(t,f,'sawtooth',mN(m),mN(m),d+.12,.055,.004);s.detune.value=(Math.random()-.5)*12;}}};
-const pat=(p,bar)=>Array.isArray(p)?p[bar%p.length]:p;
-function playStep(S,step,t,spb){const bar=Math.floor(step/16),k=step%16,o=MUSIC.bus;
-  for(const [key,fn] of [['kick','kick'],['snare','snare'],['clap','clap'],['cow','cow'],['taiko','taiko'],['rim','rim'],['cym','cym']]){const p=S[key];if(p&&pat(p,bar)[k]==='x')MI[fn](t,o);}
-  if(S.hat&&pat(S.hat,bar)[k]==='x')MI.hat(t,o,false);if(S.ohat&&pat(S.ohat,bar)[k]==='x')MI.hat(t,o,true);
-  for(const key of ['bass','sqbass','whistle','pluck','saw','koto','flute','brass','tuba']){const p=S[key];if(!p)continue;for(const [st,m,len] of pat(p,bar))if(st===k)MI[key](t,m,len*spb,o);}
-  if(S.stab)for(const [st,ms,len] of pat(S.stab,bar))if(st===k)MI.stab(t,ms,len*spb,o);}
-function musicTick(){if(!AC||!MUSIC.playing)return;const S=curSong(),spb=60/S.bpm/4,now=AC.currentTime;
-  if(MUSIC.next<now-.25)MUSIC.next=now+.05;
-  while(MUSIC.next<now+.2){playStep(S,MUSIC.step,MUSIC.next,spb);MUSIC.next+=spb*(MUSIC.step%2?1-S.sw:1+S.sw);MUSIC.step=(MUSIC.step+1)%(S.bars*16);}}
-function musicStart(){if(!AC||!MUSIC.on||MUSIC.playing)return;try{
-  const g=AC.createGain(),cp=AC.createDynamicsCompressor();cp.threshold.value=-14;cp.ratio.value=4;cp.attack.value=.004;cp.release.value=.2;
-  g.gain.setValueAtTime(0,AC.currentTime);g.gain.linearRampToValueAtTime(muGain(),AC.currentTime+1.2);g.connect(cp).connect(OUT);
-  MUSIC.bus=g;MUSIC.playing=true;MUSIC.step=0;MUSIC.next=AC.currentTime+.08;MUSIC.timer=setInterval(musicTick,25);musicTick();}catch(e){MUSIC.playing=false;}}
-function musicStop(fade=.6){if(!MUSIC.playing)return;MUSIC.playing=false;clearInterval(MUSIC.timer);const g=MUSIC.bus;if(!g||!AC)return;
-  try{const t=AC.currentTime;g.gain.cancelScheduledValues(t);g.gain.setValueAtTime(g.gain.value,t);g.gain.linearRampToValueAtTime(0,t+fade);setTimeout(()=>{try{g.disconnect();}catch(e){}},fade*1000+400);}catch(e){}}
-function musicNext(){if(MUSIC.over){MUSIC.over=null;if(MUSIC.playing){musicStop(.25);setTimeout(musicStart,280);}return;}MUSIC.idx=(MUSIC.idx+1)%SONGS.length;try{localStorage.setItem('tk-song',String(MUSIC.idx));}catch(e){}if(MUSIC.playing){musicStop(.25);setTimeout(musicStart,280);}}
-/* ---------- hudba k mapám: Tokio (japonská stupnice, koto, flétna, taiko) a Brno (dechovka) ---------- */
-Object.assign(MI,{
-  koto(t,m,d,o){const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(5200,t);f.frequency.exponentialRampToValueAtTime(900,t+.5);f.connect(o);
-    MI.osc(t,f,'triangle',mN(m)*1.01,mN(m),.9,.2,.002);MI.osc(t,f,'sawtooth',mN(m),mN(m),.18,.05,.002);MI.osc(t,o,'sine',mN(m+12),mN(m+12),.35,.04,.002);},
-  flute(t,m,d,o){const s=AC.createOscillator(),l=AC.createOscillator(),lg=AC.createGain(),g=AC.createGain(),f=mN(m);s.type='sine';s.frequency.setValueAtTime(f*.985,t);s.frequency.linearRampToValueAtTime(f,t+.09);
-    l.frequency.value=5.2;lg.gain.setValueAtTime(0,t);lg.gain.linearRampToValueAtTime(f*.011,t+Math.min(.5,d*.6));l.connect(lg).connect(s.frequency);
-    g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(.13,t+.07);g.gain.setValueAtTime(.12,t+Math.max(.08,d*.85));g.gain.exponentialRampToValueAtTime(.001,t+d+.12);s.connect(g).connect(o);s.start(t);l.start(t);s.stop(t+d+.15);l.stop(t+d+.15);
-    MI.noise(t,o,Math.min(.3,d),.035,'bandpass',f*2,2);MI.osc(t,o,'triangle',f*2,f*2,d,.012,.06);},
-  taiko(t,o){MI.osc(t,o,'sine',120,52,.55,.9,.002);MI.noise(t,o,.08,.25,'lowpass',900);},
-  rim(t,o){MI.noise(t,o,.04,.3,'bandpass',2400,6);MI.osc(t,o,'square',1100,900,.03,.05);},
-  brass(t,m,d,o){const f=AC.createBiquadFilter();f.type='lowpass';f.Q.value=2;f.frequency.setValueAtTime(500,t);f.frequency.linearRampToValueAtTime(2600,t+.06);f.frequency.exponentialRampToValueAtTime(1500,t+d);f.connect(o);
-    for(const dt of [-6,6]){const s=MI.osc(t,f,'sawtooth',mN(m),mN(m),d+.06,.07,.02);s.detune.value=dt;}MI.osc(t,o,'square',mN(m),mN(m),d,.02,.02);},
-  tuba(t,m,d,o){const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(700,t);f.frequency.exponentialRampToValueAtTime(320,t+d);f.connect(o);MI.osc(t,f,'sawtooth',mN(m),mN(m),d+.05,.22,.015);MI.osc(t,o,'sine',mN(m),mN(m),d+.05,.3,.01);},
-  cym(t,o){MI.noise(t,o,.6,.08,'highpass',6500,.6);}});
-const MAPSONGS=(()=>{
-  // TOKIO · SAKURA: stupnice in (D, Es, G, A, B), koto rozkládá, šakuhači vede melodii
-  const kA=[[0,62,2],[2,69,2],[4,74,2],[6,75,2],[8,69,2],[10,74,2],[12,79,2],[14,74,2]],kB=[[0,55,2],[2,62,2],[4,67,2],[6,70,2],[8,62,2],[10,67,2],[12,69,2],[14,67,2]];
-  const bA=[[0,38,7],[8,38,7]],bB=[[0,43,7],[8,43,7]];
-  const tokyo={name:'SAKURA',bpm:80,sw:0,bars:8,taiko:['x.....x...x.....','x.....x...x..x.x'],rim:'....x.......x...',hat:'..x...x...x...x.',
-    koto:[kA,kA,kB,kA,kA,kB,kB,kA],bass:[bA,bA,bB,bA,bA,bB,bB,bA],
-    flute:[[[0,81,6],[6,82,2],[8,81,4],[12,79,4]],[[0,75,6],[6,74,2],[8,74,8]],[[0,74,3],[3,75,1],[4,79,4],[8,81,6],[14,79,2]],[[0,82,4],[4,81,4],[8,79,8]],
-      [[0,86,6],[6,82,2],[8,81,4],[12,82,2],[14,81,2]],[[0,79,4],[4,75,4],[8,79,8]],[[0,75,2],[2,74,2],[4,70,4],[8,74,4],[12,75,4]],[[0,74,14]]]};
-  // BRNO · DECHOVKA: polka v B dur, tuba na dobu, akordy na zadní dobu, trubka melodii
-  const CH={B:[[46,41],[58,62,65]],F:[[41,36],[57,60,63]],E:[[39,46],[55,58,63]]},seq='BFBFEBFB'.split('');
-  const brno={name:'DECHOVKA',bpm:124,sw:.04,bars:8,kick:'x.......x.......',snare:'....x.......x...',cym:['','','','','','','','x...............'].map(p=>p||'................'),
-    tuba:seq.map(c=>[[0,CH[c][0][0],3],[8,CH[c][0][1],3]]),stab:seq.map(c=>[[4,CH[c][1],2],[12,CH[c][1],2]]),
-    brass:[[[0,65,2],[2,67,2],[4,69,2],[6,70,2],[8,74,4],[12,70,4]],[[0,72,2],[2,70,2],[4,69,2],[6,67,2],[8,65,8]],[[0,62,2],[2,65,2],[4,70,4],[8,69,2],[10,70,2],[12,72,4]],[[0,74,6],[6,72,2],[8,69,8]],
-      [[0,67,2],[2,70,2],[4,75,4],[8,74,2],[10,72,2],[12,70,4]],[[0,74,2],[2,72,2],[4,70,2],[6,69,2],[8,70,4],[12,65,4]],[[0,72,4],[4,69,2],[6,72,2],[8,77,4],[12,75,4]],[[0,74,4],[4,72,2],[6,69,2],[8,70,8]]]};
-  return {tokyo,brno};})();
-const curSong=()=>MUSIC.over&&MAPSONGS[MUSIC.over]?MAPSONGS[MUSIC.over]:SONGS[MUSIC.idx];
-function musicSet(over){over=over||null;if(MUSIC.over===over)return;MUSIC.over=over;
-  if(MUSIC.playing){musicStop(.35);clearTimeout(MUSIC.swT);MUSIC.swT=setTimeout(()=>{if(inMenu())musicStart();},400);}}
-const inMenu=()=>appScr==='menu'||appScr==='lobby';
-['pointerdown','keydown'].forEach(ev=>addEventListener(ev,()=>{if(inMenu()&&MUSIC.on){audio();musicStart();}},{passive:true}));
+// efekty hry (motor, nárazy…) se po dojetí ztiší; hudba jde mimo ně
+let FXMUTE=false;
+function fxMute(on){FXMUTE=on;if(!AC||!MASTER)return;const t=AC.currentTime;MASTER.gain.cancelScheduledValues(t);MASTER.gain.setTargetAtTime(on?0:VOL.fx,t,on?.35:.05);}
 
 // klakson: dva tóny (G a H) přes zkreslení a pásmovou propust; kuře místo toho kdáká
 const HORNS=[null,null];
@@ -217,4 +120,3 @@ function engineUpdate(){hornUpdate();
       e.rg.gain.setTargetAtTime(k*(G.two?.6:1)*(air?0:(r.off?.16:.025))*clamp(sp*1.4,0,1),t,.08);e.rf.frequency.setTargetAtTime(r.off?220:120,t,.1);}});
   if(WINDS){WINDS.g.gain.setTargetAtTime(live?.03+.06*WIND.s+.05*clamp(Math.abs(ref.vf)/MAX,0,1.3):0,t,.4);WINDS.f.frequency.setTargetAtTime(300+380*WIND.s+300*clamp(Math.abs(ref.vf)/MAX,0,1),t,.5);}
 }
-

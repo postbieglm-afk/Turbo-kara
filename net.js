@@ -66,7 +66,7 @@ function padBroadcast(now){
     it:G.r.map(r=>r.rollT>0?-1:r.item),co:G.r.map(r=>r.coins),hit:G.r.map(r=>r.hitN),fin:G.r.map(r=>r.finished?1:0),off:G.r.map(r=>r.off&&Math.abs(r.vf)>40&&G.mode==='race'?1:0),cr:G.r.map(r=>r.crashN),oil:G.r.map(r=>r.oilN),ld:G.r.map(r=>r.landN),dl:G.r.map(r=>r.dlN),mt:G.r.map(r=>r.mtN),dr:G.r.map(r=>r.drift?r.driftL+1:0)}).catch(()=>{});
 }
 function showLobby(){
-  appScr='lobby';audio();musicStart();G=newGame('demo');
+  appScr='lobby';audio();fxMute(false);if((MUSIC.f||1)!==1||MUSIC.over==='win'||MUSIC.over==='fin')musicPlay(TRK.id,1);else musicStart();G=newGame('demo');
   const solo=soloKind(padKind);
   const dch=Object.keys(DIFFS).map(k=>`<button class="chip emo${k===diff?' on':''}" data-diff="${k}" title="${DIFFS[k].n}" aria-label="Obtížnost: ${DIFFS[k].n}">${DIFF_EMO[k]}</button>`).join('');
   card.className='card';ov.classList.remove('menuov');

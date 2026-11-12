@@ -5,7 +5,7 @@ function mkRacer(i,name,color,dk,ai){
   const L0=T.spawnS!=null?T.spawnS+90:(T.loopL||L),lat=(i?.42:-.42)*HALF,p=trackAt(L0-90,lat);
   return {i,name,color,dk,ai,x:p.x,y:p.y,ang:p.a,vx:0,vy:0,vf:0,steerS:0,idx:p.i,s:L0-90,vmax:0,prog:-90,lapsDone:0,laps:[],best:null,lapStart:0,
     finished:false,place:0,finishT:0,coins:0,coinsTot:0,item:IT_NONE,roll:IT_NONE,rollT:0,boostT:0,shieldT:0,spinT:0,spinDir:1,hitN:0,
-    stuck:0,rev:0,crashN:0,oilN:0,offT:0,shk:0,z:0,vz:0,landN:0,hL:0,spinMax:1,spinFrom:0,shieldHit:0,drift:0,driftT:0,driftL:0,dlN:0,mtN:0,hD:0,hM:0,slickT:0,pudCd:0,splat:null,splatT:0,hH:0,hC:0,hO:0,brakeP:0,revHold:0,wrongT:0,off:false,water:false,want:false,banner:null,brake:false,dist:0,lat:0,maxMul:1,aiHold:0,dustT:0,
+    stuck:0,rev:0,crashN:0,oilN:0,offT:0,shk:0,z:0,vz:0,landN:0,hL:0,spinMax:1,spinFrom:0,shieldHit:0,drift:0,driftT:0,driftL:0,dlN:0,mtN:0,hD:0,hM:0,slickT:0,pudCd:0,splat:null,splatT:0,hH:0,hC:0,hO:0,brakeP:0,revHold:0,wrongT:0,off:false,want:false,banner:null,brake:false,dist:0,lat:0,maxMul:1,aiHold:0,dustT:0,
     cam:{x:p.x,y:p.y,a:p.a,zs:0}};
 }
 let G,appScr='menu';
@@ -23,7 +23,7 @@ G=newGame('demo');
 
 function startGame(mode){
   ensureTrack(mode.startsWith('free'));
-  audio();musicStop();lastMode=mode;appScr='game';G=newGame(mode);ov.hidden=true;
+  audio();fxMute(false);lastMode=mode;appScr='game';G=newGame(mode);ov.hidden=true;musicPlay(null,.6);
   document.body.classList.toggle('split',G.two);engineStart();
   if(G.free)sfx('go');
 }
@@ -219,7 +219,6 @@ function step(r,c){
   // mimo trať se zpomaluje až po 2 s, pak mírně (náběh 0,4 s)
   const offK=clamp((r.offT-OFF_DELAY)/.4,0,1);
   top*=1-.15*offK;
-  if(r.water)top*=.32;
   let slp=0;if(TERR&&!air){slp=(hAt(r.x+fx*22,r.y+fy*22)-hAt(r.x-fx*22,r.y-fy*22))/44;top*=1-Math.max(-.14,Math.min(.14,slp))*.9;}
   if(air){/* ve vzduchu: plyn ani brzda nezabírají */}
   else if(spin)vf-=vf*1.5*dt;
@@ -230,7 +229,7 @@ function step(r,c){
   else if(c.gas){if(vf<0)vf+=400*dt;else if(vf<top){vf=Math.min(top,vf+ACC*(r.boostT>0?2.3:1)*(1-.5*vf/top)*dt);}}
   else vf-=Math.sign(vf)*Math.min(Math.abs(vf),130*dt);
   if(slp&&!spin)vf-=slp*430*dt;
-  if(vf>top&&!air)vf=Math.max(top,vf-(r.water?750:offK>0?330:260)*dt);
+  if(vf>top&&!air)vf=Math.max(top,vf-(offK>0?330:260)*dt);
   const grip=drifting?7:air?.4:spin?1.2:r.slickT>0?1.6:offK>0?9-2*offK:(r.brakeP>.6&&vf>220?6.5:9);
   vl*=Math.exp(-grip*dt);
   // ve smyku auto neztrácí rychlost, jen klouže bokem
@@ -254,11 +253,10 @@ function step(r,c){
   if(r.rollT>0){r.rollT-=dt;if(r.rollT<=0){r.item=r.roll;r.aiHold=0;if(!r.ai)sfx('item');}}
   // poloha na trati, kola
   const s=locate(r);let d=s-r.s;if(d>L/2)d-=L;if(d<-L/2)d+=L;r.s=s;r.prog+=d;
-  r.off=r.dist>HALF+5&&(!FREEOPEN()||r.dist<WALL+4);r.water=inLake(r.x,r.y,-10);r.offT=r.off?r.offT+dt:0;
+  r.off=r.dist>HALF+5&&(!FREEOPEN()||r.dist<WALL+4);r.offT=r.off?r.offT+dt:0;
   // třesení obrazovky: doznívá, mimo trať drnčí podle rychlosti
   r.shk*=Math.exp(-5*dt);
   if(r.off&&!air&&Math.abs(vf)>40)r.shk=Math.max(r.shk,.3+.4*Math.min(1,Math.abs(vf)/MAX));
-  if(r.water&&Math.random()<.4)addPart(r.x+(Math.random()-.5)*20,r.y+(Math.random()-.5)*20,(Math.random()-.5)*60,(Math.random()-.5)*60,.5,'rgba(220,240,255,.8)',3,'dust');
   if(r.off&&!air&&Math.abs(vf)>60&&Math.random()<.35)addPart(r.x-fx*16,r.y-fy*16,(Math.random()-.5)*50-fx*40,(Math.random()-.5)*50-fy*40,.5,'rgba(200,190,180,.45)',5,'dust');
   if(spin&&Math.random()<.6)addPart(r.x,r.y,(Math.random()-.5)*80,(Math.random()-.5)*80,.6,'rgba(230,230,230,.5)',7,'dust');
   if(r.boostT>0&&Math.random()<.7)addPart(r.x-fx*24,r.y-fy*24,-fx*90+(Math.random()-.5)*40,-fy*90+(Math.random()-.5)*40,.35,Math.random()<.5?'#ffd166':'#f07a24',3.5,'spark');
@@ -268,8 +266,9 @@ function step(r,c){
   const done=Math.floor(r.prog/L);
   if(done>r.lapsDone&&!r.finished){
     r.lapsDone=done;const lt=G.t-r.lapStart;r.laps.push(lt);r.best=r.best===null?lt:Math.min(r.best,lt);r.lapStart=G.t;
-    if(done>=LAPS){r.finished=true;r.finishT=G.t;r.place=++G.finishN;if(!r.ai){sfx('finish');}
-      r.banner={text:'CÍL',sub:r.place+'. místo · '+fmt(r.finishT),t:3,max:3,col:r.place===1?C.gold:C.fg};}
+    if(done>=LAPS){r.finished=true;r.finishT=G.t;r.place=++G.finishN;r.banner=null;
+      if(!r.ai){const cols=r.place===1?[C.gold,'#fff3c4','#ffd36e']:[r.color,'#f4f2ec',C.gold];for(let i=0;i<46;i++){const a=Math.random()*TAU,v=80+Math.random()*260;addPart(r.x,r.y,Math.cos(a)*v,Math.sin(a)*v,.9+Math.random()*.8,cols[i%3],3.5,'spark');}
+        const hum=G.humans.map(i=>G.r[i]);if(hum.every(h=>h.finished)){fxMute(true);musicPlay(Math.min(...hum.map(h=>h.place))===1?'win':'fin',1);}}}
     else{if(!r.ai)sfx('lap');r.banner={text:done===LAPS-1?'POSLEDNÍ KOLO':'KOLO '+(done+1)+'/'+LAPS,sub:'Kolo za '+fmt(lt)+(lt===r.best&&done>1?' · nejlepší':''),t:2,max:2,col:done===LAPS-1?C.gold:C.fg};}
   }
 }

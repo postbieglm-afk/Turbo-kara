@@ -2,7 +2,6 @@
 'use strict';
 /* ---------- mapy: trať, město a předměty (Tokio, Brno) ---------- */
 const SIDE=38,WALL=HALF+SIDE; // chodník za krajnicí, za ním zeď domů
-const LAKES=[];const inLake=()=>false;
 let TRK=null,T,N,DS,L,CITY,MINI=[],groundCanvas,groundPat;
 const PK=[],PADS=[],JUMPS=[],CONES=[],BARRS=[],ZEBRA=[],AVOID=[];
 // trať z řídicích bodů: Catmull-Rom, vzorky po 12 jednotkách, zakřivení, ideální stopa a rychlost pro AI
@@ -46,8 +45,6 @@ const coinRow=(m,lat)=>{for(let k=0;k<6;k++){const p=trackAt(m.s+(k-2.5)*36,lat)
 const boxRow=m=>{[-.56,0,.56].forEach((o,k)=>{const p=trackAt(m.s,o*HALF);PK.push({type:'box',x:p.x,y:p.y,on:true,t:0,ph:k*2.1});});};
 
 // Brno: řídicí body přepsané z Martinovy mapky (pixely obrázku, 42 bodů), měřítko 5, start na Husově ulici směrem na sever
-const HILL=[[0,300],[195,296],[320,215],[460,100],[600,0]],PETM=[[0,118],[110,116],[220,56],[330,0]];
-const profY=(P,r)=>{if(r>=P[P.length-1][0])return 0;for(let i=1;i<P.length;i++)if(r<=P[i][0]){const a=P[i-1],b=P[i],u=(r-a[0])/(b[0]-a[0]);return a[1]+(b[1]-a[1])*u;}return 0;};
 
 const TRACKS={
   tokyo:{id:'tokyo',name:'Tokio',sub:'Neonové uličky',style:'tokyo',banner:'TOKIO · START',sideC:'#b4473e',
@@ -170,8 +167,8 @@ const TRACKS={
       for(const side of [1,-1])for(let s=70;s<L;s+=150){const p=trackAt(s,side*(WALL-4));if(coarseDist(p.x,p.y)<WALL-8)continue;
         const nx=T.nx(p.i)*side,ny=T.ny(p.i)*side;lamps.push({x:p.x,y:p.y,hx:p.x-nx*14,hy:p.y-ny*14,a:p.a,lan:false});}
       // stromy na Špilberku, Petrově a v Denisových sadech
-      const scatter=(cx,cy,n,r0,r1,P,sz)=>{for(let k=0;k<n;k++){const a=R()*TAU,r=r0+R()*(r1-r0);trees.push({x:cx+Math.cos(a)*r,y:cy+Math.sin(a)*r,r:sz*(.8+R()*.5),h:sz*2.2,c:Math.floor(R()*5),y0:P&&!TERR?profY(P,r):0,park:true});}};
-      scatter(lm.sp.x,lm.sp.y,230,150,570,HILL,22);scatter(lm.pe.x,lm.pe.y,60,130,300,PETM,20);scatter(lm.de.x,lm.de.y,22,40,150,null,15);
+      const scatter=(cx,cy,n,r0,r1,sz)=>{for(let k=0;k<n;k++){const a=R()*TAU,r=r0+R()*(r1-r0);trees.push({x:cx+Math.cos(a)*r,y:cy+Math.sin(a)*r,r:sz*(.8+R()*.5),h:sz*2.2,c:Math.floor(R()*5),y0:0,park:true});}};
+      scatter(lm.sp.x,lm.sp.y,230,150,570,22);scatter(lm.pe.x,lm.pe.y,60,130,300,20);scatter(lm.de.x,lm.de.y,22,40,150,15);
       return {blds,lamps,signs,shops,trees,lm};
     },
 

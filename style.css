@@ -315,3 +315,20 @@ body.touch .cfig.t{order:-1}
 .c-mn-t{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:6px;border-top:1px solid rgba(242,240,227,.12)}
 .c-mn-t:empty{display:none}
 .c-mn-i.sm{min-height:36px;font-size:13px;font-style:normal;font-weight:600;padding:4px 10px;border-width:1px}
+
+.mfoot{display:flex;flex-wrap:wrap;gap:10px}
+#mcredits{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:16px}
+#mcredits[hidden]{display:none}
+.mcr-bg{position:absolute;inset:0;background:rgba(3,6,11,.72);backdrop-filter:blur(3px)}
+.mcr{position:relative;width:min(440px,100%);padding:26px 26px 24px;background:linear-gradient(180deg,rgba(18,30,46,.98),rgba(6,10,17,.98));border:1px solid rgba(63,216,255,.35);border-top:3px solid var(--cy);clip-path:polygon(0 0,calc(100% - 18px) 0,100% 18px,100% 100%,18px 100%,0 calc(100% - 18px));animation:mcrIn .25s cubic-bezier(.2,.8,.2,1) both}
+.mcr h2{margin:2px 0 18px;font-family:var(--hud);font-style:italic;font-weight:700;font-size:40px;letter-spacing:.02em;color:var(--wh)}
+.mcr .mk{margin:0}
+.mcr-s{display:flex;flex-direction:column;gap:6px;padding:14px 0;border-top:1px solid rgba(255,255,255,.08)}
+.mcr-s span{font-family:var(--hud);font-weight:700;font-size:11px;letter-spacing:.2em;color:var(--cy)}
+.mcr-s b{font-family:var(--hud);font-weight:700;font-size:18px;color:var(--wh)}
+.mcr-s em{font-style:normal;font-size:13px;color:var(--mu)}
+.mcr-s a{color:var(--mu);text-decoration:none;font-size:14px}.mcr-s a b{font-size:16px;color:var(--cy)}.mcr-s a:hover b{text-decoration:underline}
+.mcr-x{position:absolute;top:10px;right:14px;width:36px;height:36px;border:0;background:none;color:var(--mu);font-size:28px;line-height:1;cursor:pointer}
+.mcr-x:hover,.mcr-x:focus-visible{color:var(--wh)}
+@keyframes mcrIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.mcr{animation:none}}

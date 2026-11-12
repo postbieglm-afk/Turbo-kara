@@ -35,7 +35,6 @@ function drawMinimap(x,y,size,me){
   const pad=10,w=T.maxX-T.minX,h=T.maxY-T.minY,sc=(size-pad*2)/Math.max(w,h),ox=x+pad+(size-pad*2-w*sc)/2,oy=y+pad+(size-pad*2-h*sc)/2;
   ctx.fillStyle=HUDBG;rrect(x,y,size,size,6);ctx.fill();ctx.strokeStyle=HUDLN;ctx.lineWidth=1.5;ctx.stroke();
   {const q=5;for(let r=0;r<2;r++)for(let c=0;c<4;c++){ctx.fillStyle=(r+c)%2?'#f2f0e3':'#16181a';ctx.fillRect(x+size-8-(c+1)*q,y+6+r*q,q,q);}}
-  ctx.fillStyle='rgba(63,143,184,.75)';LAKES.forEach(l=>{ctx.beginPath();ctx.arc(ox+(l.x-T.minX)*sc,oy+(l.y-T.minY)*sc,l.r*sc,0,TAU);ctx.fill();});
   ctx.beginPath();MINI.forEach(([px,py],i)=>ctx[i?'lineTo':'moveTo'](ox+(px-T.minX)*sc,oy+(py-T.minY)*sc));ctx.closePath();
   ctx.strokeStyle='rgba(242,240,227,.25)';ctx.lineWidth=7;ctx.lineJoin='round';ctx.stroke();ctx.strokeStyle='#d9d6c8';ctx.lineWidth=3;ctx.stroke();
   const sx=ox+(T.x[0]-T.minX)*sc,sy=oy+(T.y[0]-T.minY)*sc;ctx.strokeStyle='#16181a';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(sx-T.nx(0)*7,sy-T.ny(0)*7);ctx.lineTo(sx+T.nx(0)*7,sy+T.ny(0)*7);ctx.stroke();
@@ -151,8 +150,17 @@ function drawHUD(V,r,P,t,vi){
     txt(b.text,mx,my,`italic 700 ${Math.round(58*sc)}px ${HUDF}`,b.col||C.fg,'center','middle');
     if(b.sub)txt(b.sub,mx,my+44*sc,`700 ${Math.round(22*sc)}px ${UIF}`,C.fg,'center','middle');ctx.globalAlpha=1;}
   else if(r.wrongT>.8){if(Math.sin(t*8)>-.3){ribbon(mx,my,420*sc,64*sc,C.p1);txt('OPAČNÝ SMĚR',mx,my,`italic 700 ${Math.round(48*sc)}px ${HUDF}`,C.p1,'center','middle');}}
-  if(r.finished&&!r.banner&&G.mode==='race'){ribbon(mx,my+18*sc,400*sc,104*sc,r.place===1?C.gold:C.fg);txt(r.place+'. místo',mx,my,`italic 700 ${Math.round(48*sc)}px ${HUDF}`,r.place===1?C.gold:C.fg,'center','middle');
-    txt(G.endT>2.7?'Do konce závodu zbývá '+Math.ceil(G.endT)+' s':'Čekám na ostatní…',mx,my+40*sc,`700 ${Math.round(20*sc)}px ${UIF}`,C.fg,'center','middle');}
+  if(r.finished&&G.mode==='race'){// velký nápis v cíli: umístění, čas, nejlepší kolo
+    const k=G.t-r.finishT,a=Math.min(1,k*4),pop=1+Math.max(0,.35*(1-k*3)),pc=r.place===1?C.gold:r.place===2?'#d4dde7':r.place===3?'#d8935a':C.fg,cy=V.y+V.h*.4,bh=230*sc;
+    ctx.globalAlpha=a;const gb=ctx.createLinearGradient(0,cy-bh/2,0,cy+bh/2);gb.addColorStop(0,'rgba(4,8,14,.55)');gb.addColorStop(.5,'rgba(4,8,14,.88)');gb.addColorStop(1,'rgba(4,8,14,.55)');ctx.fillStyle=gb;ctx.fillRect(V.x,cy-bh/2,V.w,bh);
+    ctx.fillStyle=pc;ctx.fillRect(V.x,cy-bh/2,V.w,3*sc);ctx.fillRect(V.x,cy+bh/2-3*sc,V.w,3*sc);
+    for(let i=0;i<14;i++){ctx.fillStyle=(i%2?'#f4f2ec':'#11161c');ctx.fillRect(V.x+V.w/2-7*16*sc+i*16*sc,cy-bh/2+10*sc,16*sc,8*sc);ctx.fillStyle=(i%2?'#11161c':'#f4f2ec');ctx.fillRect(V.x+V.w/2-7*16*sc+i*16*sc,cy-bh/2+18*sc,16*sc,8*sc);}
+    txt('C Í L',mx,cy-bh/2+48*sc,`italic 700 ${Math.round(30*sc)}px ${HUDF}`,C.fg,'center','middle');
+    ctx.save();ctx.translate(mx,cy+8*sc);ctx.scale(pop,pop);ctx.font=`italic 700 ${Math.round(120*sc)}px ${HUDF}`;const pw=ctx.measureText(r.place+'.').width;ctx.font=`italic 700 ${Math.round(56*sc)}px ${HUDF}`;const mw=ctx.measureText('MÍSTO').width,tw=pw+14*sc+mw;
+    txt(r.place+'.',-tw/2,0,`italic 700 ${Math.round(120*sc)}px ${HUDF}`,pc,'left','middle');txt('MÍSTO',-tw/2+pw+14*sc,10*sc,`italic 700 ${Math.round(56*sc)}px ${HUDF}`,pc,'left','middle');ctx.restore();
+    txt('Čas '+fmt(r.finishT)+(r.best!=null?'  ·  nejlepší kolo '+fmt(r.best):''),mx,cy+bh/2-38*sc,`700 ${Math.round(20*sc)}px ${UIF}`,C.fg,'center','middle');
+    ctx.globalAlpha=1;
+    if(G.endT>2.7)txt('Do konce závodu zbývá '+Math.ceil(G.endT)+' s',mx,cy+bh/2+26*sc,`700 ${Math.round(18*sc)}px ${UIF}`,C.fg,'center','middle');}
   else if(!r.finished&&G.two&&G.endT>2.7&&G.mode==='race')txt('Soupeř je v cíli. Zbývá '+Math.ceil(G.endT)+' s',mx,V.y+V.h-(touchMode?150:40)*sc-s.b,`700 ${Math.round(22*sc)}px ${UIF}`,C.gold,'center','middle');
   // dotyková tlačítka
   if(touchActive()){const z=zones(V),ts=touchState[vi]||{};
